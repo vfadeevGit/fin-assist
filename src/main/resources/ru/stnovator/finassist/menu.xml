@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<menu-config xmlns="http://jmix.io/schema/flowui/menu">
+
+    <menu opened="true" id="application" title="msg://ru.stnovator.finassist/menu.application.title">
+        <item view="Contract.list" title="msg://ru.stnovator.finassist.view.contract/contractListView.title"/>
+        <menu opened="true" id="list-of-values"
+              description="msg://ru.stnovator.finassist/menu_config.list-of-values.description"
+              title="msg://ru.stnovator.finassist/menu_config.list-of-values.title">
+            <item view="Customer.list" title="msg://ru.stnovator.finassist.view.customer/customerListView.title"/>
+            <item view="Project.list" title="msg://ru.stnovator.finassist.view.project/projectListView.title"/>
+            <item view="LineOfBusiness.list"
+                  title="msg://ru.stnovator.finassist.view.lineofbusiness/lineOfBusinessListView.title"/>
+        </menu>
+        <menu id="admin-section" description="msg://ru.stnovator.finassist/menu_config.admin-section.description"
+              title="msg://ru.stnovator.finassist/menu_config.admin-section.title">
+            <item view="User.list" title="msg://ru.stnovator.finassist.view.user/UserListView.title"/>
+        </menu>
+    </menu>
+</menu-config>
