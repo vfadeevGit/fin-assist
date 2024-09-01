@@ -3,6 +3,7 @@
 
     <menu opened="true" id="application" title="msg://ru.stnovator.finassist/menu.application.title">
         <item view="Contract.list" title="msg://ru.stnovator.finassist.view.contract/contractListView.title"/>
+        <item view="WorkSheet.list" title="msg://ru.stnovator.finassist.view.worksheet/workSheetListView.title"/>
         <menu opened="true" id="list-of-values"
               description="msg://ru.stnovator.finassist/menu_config.list-of-values.description"
               title="msg://ru.stnovator.finassist/menu_config.list-of-values.title">

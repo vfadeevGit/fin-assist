@@ -9,6 +9,7 @@
                 <property name="projects" fetchPlan="_base">
                     <property name="lineOfBusiness" fetch="AUTO" fetchPlan="_base"/>
                 </property>
+                <property name="customer" fetchPlan="_base"/>
             </fetchPlan>
             <loader id="contractDl"/>
             <collection id="projectsDc" property="projects"/>
@@ -23,9 +24,16 @@
     </actions>
     <layout>
         <formLayout id="form" dataContainer="contractDc">
+            <entityPicker id="customerField" property="customer">
+                <actions>
+                    <action id="entityLookup" type="entity_lookup"/>
+                    <action id="entityClear" type="entity_clear"/>
+                </actions>
+            </entityPicker>
             <textField id="internalIDField" property="internalID"/>
-            <datePicker id="internalDateField" property="internalDate"/>
-            <textField id="daysLongitudeField" property="daysLongitude"/>
+            <datePicker id="internalDateBeginField" property="internalDateBegin"/>
+            <datePicker id="internalDateEndField" property="internalDateEnd"/>
+            <bigDecimalField id="daysLongitudeField" property="daysLongitude" readOnly="true"/>
             <select id="paymentTypeField" property="paymentType"/>
             <textField id="sumTotalField" property="sumTotal"/>
             <textField id="daysPaymentField" property="daysPayment"/>

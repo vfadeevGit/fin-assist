@@ -1,17 +1,20 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <view xmlns="http://jmix.io/schema/flowui/view"
       xmlns:c="http://jmix.io/schema/flowui/jpql-condition"
-      title="msg://projectListView.title"
-      focusComponent="projectsDataGrid">
+      title="msg://workSheetListView.title"
+      focusComponent="workSheetsDataGrid">
     <data>
-        <collection id="projectsDc"
-                    class="ru.stnovator.finassist.entity.Project">
+        <collection id="workSheetsDc"
+                    class="ru.stnovator.finassist.entity.WorkSheet">
             <fetchPlan extends="_base">
-                <property name="lineOfBusiness" fetchPlan="_base"/>
+                <property name="project" fetchPlan="_base">
+                    <property name="lineOfBusiness" fetchPlan="_base"/>
+                    <property name="contract" fetchPlan="_base"/>
+                </property>
             </fetchPlan>
-            <loader id="projectsDl" readOnly="true">
+            <loader id="workSheetsDl" readOnly="true">
                 <query>
-                    <![CDATA[select e from Project e]]>
+                    <![CDATA[select e from WorkSheet e]]>
                 </query>
             </loader>
         </collection>
@@ -29,26 +32,30 @@
     </actions>
     <layout>
         <genericFilter id="genericFilter"
-                       dataLoader="projectsDl">
+                       dataLoader="workSheetsDl">
             <properties include=".*"/>
         </genericFilter>
         <hbox id="buttonsPanel" classNames="buttons-panel">
-            <button id="editBtn" action="projectsDataGrid.edit"/>
-            <button id="removeBtn" action="projectsDataGrid.remove"/>
-            <simplePagination id="pagination" dataLoader="projectsDl"/>
+            <button id="createBtn" action="workSheetsDataGrid.create"/>
+            <button id="editBtn" action="workSheetsDataGrid.edit"/>
+            <button id="removeBtn" action="workSheetsDataGrid.remove"/>
+            <simplePagination id="pagination" dataLoader="workSheetsDl"/>
         </hbox>
-        <dataGrid id="projectsDataGrid"
+        <dataGrid id="workSheetsDataGrid"
                   width="100%"
                   minHeight="20em"
-                  dataContainer="projectsDc"
+                  dataContainer="workSheetsDc"
                   columnReorderingAllowed="true">
             <actions>
+                <action id="create" type="list_create"/>
                 <action id="edit" type="list_edit"/>
                 <action id="remove" type="list_remove"/>
             </actions>
             <columns resizable="true">
-                <column property="name"/>
-                <column property="lineOfBusiness"/>
+                <column property="project"/>
+                <column property="project.contract" header="msg://columnContract.header"/>
+                <column property="project.lineOfBusiness" header="msg://columnLineOfBusiness.header"/>
+                <column property="type"/>
             </columns>
         </dataGrid>
         <hbox id="lookupActions" visible="false">

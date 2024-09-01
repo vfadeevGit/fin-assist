@@ -1,12 +1,13 @@
 package ru.stnovator.finassist.entity;
 
 import io.jmix.core.DeletePolicy;
+import io.jmix.core.MetadataTools;
 import io.jmix.core.annotation.DeletedBy;
 import io.jmix.core.annotation.DeletedDate;
 import io.jmix.core.entity.annotation.JmixGeneratedValue;
 import io.jmix.core.entity.annotation.OnDelete;
-import io.jmix.core.metamodel.annotation.Composition;
-import io.jmix.core.metamodel.annotation.JmixEntity;
+import io.jmix.core.metamodel.annotation.*;
+import io.jmix.core.metamodel.datatype.DatatypeFormatter;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.data.annotation.CreatedBy;
@@ -17,11 +18,14 @@ import org.springframework.data.annotation.LastModifiedDate;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 
 @JmixEntity
-@Table(name = "CONTRACT")
+@Table(name = "CONTRACT", indexes = {
+        @Index(name = "IDX_CONTRACT_CUSTOMER", columnList = "CUSTOMER_ID")
+})
 @Entity
 public class Contract {
     @JmixGeneratedValue
@@ -57,17 +61,21 @@ public class Contract {
     @Column(name = "DELETED_DATE")
     private OffsetDateTime deletedDate;
 
+    @JoinColumn(name = "CUSTOMER_ID")
+    @ManyToOne(fetch = FetchType.LAZY)
+    private Customer customer;
+
     @Column(name = "INTERNAL_ID", nullable = false, length = 50)
     @NotNull
     private String internalID;
 
     @Column(name = "INTERNAL_DATE", nullable = false)
     @NotNull
-    private LocalDate internalDate;
+    private LocalDate internalDateBegin;
 
-    @Column(name = "DAYS_LONGITUDE", nullable = false, precision = 19, scale = 2)
     @NotNull
-    private BigDecimal daysLongitude;
+    @Column(name = "INTERNAL_DATE_END", nullable = false)
+    private LocalDate internalDateEnd;
 
     @Column(name = "PAYMENT_TYPE")
     private String paymentType;
@@ -75,7 +83,7 @@ public class Contract {
     @Column(name = "SUM_TOTAL", precision = 19, scale = 2)
     private BigDecimal sumTotal;
 
-    @Column(name = "DAYS_PAYMENT", precision = 19, scale = 2)
+    @Column(name = "DAYS_PAYMENT", precision = 6, scale = 0)
     private BigDecimal daysPayment;
 
     @OrderBy("name")
@@ -83,6 +91,28 @@ public class Contract {
     @Composition
     @OneToMany(mappedBy = "contract")
     private List<Project> projects;
+
+    @NumberFormat(pattern = "", decimalSeparator = "6", groupingSeparator = "0")
+    @JmixProperty
+    @Transient
+    private BigDecimal daysLongitude;
+
+    public Customer getCustomer() {
+        return customer;
+    }
+
+    public void setCustomer(Customer customer) {
+        this.customer = customer;
+    }
+
+    public LocalDate getInternalDateEnd() {
+        return internalDateEnd;
+    }
+
+    public void setInternalDateEnd(LocalDate internalDateEnd) {
+        //TODO: Check that it is not earlier than begin date
+        this.internalDateEnd = internalDateEnd;
+    }
 
     public ContractType getPaymentType() {
         return paymentType == null ? null : ContractType.fromId(paymentType);
@@ -117,19 +147,20 @@ public class Contract {
     }
 
     public BigDecimal getDaysLongitude() {
-        return daysLongitude;
+        if (this.internalDateBegin == null || this.internalDateEnd == null) {
+            return this.daysLongitude = BigDecimal.valueOf(0);
+        } else {
+            return this.daysLongitude = BigDecimal.valueOf(ChronoUnit.DAYS.between(this.internalDateBegin, this.internalDateEnd));
+        }
     }
 
-    public void setDaysLongitude(BigDecimal daysLongitude) {
-        this.daysLongitude = daysLongitude;
+    public LocalDate getInternalDateBegin() {
+        return internalDateBegin;
     }
 
-    public LocalDate getInternalDate() {
-        return internalDate;
-    }
-
-    public void setInternalDate(LocalDate internalDate) {
-        this.internalDate = internalDate;
+    public void setInternalDateBegin(LocalDate internalDateBegin) {
+        //TODO: Check that it is not later than end date
+        this.internalDateBegin = internalDateBegin;
     }
 
     public String getInternalID() {
@@ -202,5 +233,14 @@ public class Contract {
 
     public void setId(UUID id) {
         this.id = id;
+    }
+
+    @InstanceName
+    @DependsOnProperties({"customer", "internalID", "internalDateBegin"})
+    public String getInstanceName(MetadataTools metadataTools, DatatypeFormatter datatypeFormatter) {
+        return String.format("%s %s %s",
+                metadataTools.format(customer),
+                metadataTools.format(internalID),
+                datatypeFormatter.formatLocalDate(internalDateBegin));
     }
 }
