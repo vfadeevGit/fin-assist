@@ -10,12 +10,14 @@ import io.jmix.flowui.app.inputdialog.DialogOutcome;
 import io.jmix.flowui.app.inputdialog.InputParameter;
 import io.jmix.flowui.kit.component.button.JmixButton;
 import io.jmix.flowui.model.CollectionPropertyContainer;
+import io.jmix.flowui.model.DataContext;
 import io.jmix.flowui.view.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import ru.stnovator.finassist.entity.WorkSheet;
 import ru.stnovator.finassist.entity.WorkSheetDetail;
 import ru.stnovator.finassist.view.main.MainView;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.Period;
 import java.time.temporal.ChronoUnit;
@@ -32,6 +34,8 @@ public class WorkSheetDetailView extends StandardDetailView<WorkSheet> {
     private Notifications notifications;
     @ViewComponent
     private CollectionPropertyContainer<WorkSheetDetail> detailsDc;
+    @ViewComponent
+    private DataContext dataContext;
 
     @Subscribe(id = "btnFillDetails", subject = "clickListener")
     public void onBtnFillDetailsClick(final ClickEvent<JmixButton> event) {
@@ -63,10 +67,23 @@ public class WorkSheetDetailView extends StandardDetailView<WorkSheet> {
         ArrayList<LocalDate> arrayMonths = new ArrayList<>();
         LocalDate firstDate = beginDate.withDayOfMonth(1);
         arrayMonths.add(firstDate);
-        Period diff = Period.between(beginDate, endDate);
-        for (int i=1; i <= diff.getMonths(); i++) {
+        //calculate months inside full years and add months
+        int diff = (Period.between(beginDate, endDate).getYears() > 0 ? 12 * Period.between(beginDate, endDate).getYears() : 0)
+                + Period.between(beginDate, endDate).getMonths();
+        for (int i=1; i <= diff; i++) {
             arrayMonths.add(firstDate.plusMonths(i));
         }
-        arrayMonths.stream().forEach(System.out::println);
+//        arrayMonths.stream().forEach(System.out::println);
+        //TODO think of making this method separate
+        WorkSheet workSheet = getEditedEntity();
+        for (LocalDate dateDetails : arrayMonths) {
+            if (detailsDc.getItems().stream().noneMatch(detail -> detail.getDateInterval().equals(dateDetails))) {
+                WorkSheetDetail detail = dataContext.create(WorkSheetDetail.class);
+                detail.setWorkSheet(workSheet);
+                detail.setDateInterval(dateDetails);
+                detail.setSum(BigDecimal.valueOf(0));
+                detailsDc.getMutableItems().add(detail);
+            }
+        }
     }
 }
