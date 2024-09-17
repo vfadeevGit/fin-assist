@@ -38,14 +38,23 @@
             <select id="typeField" property="type"/>
         </formLayout>
         <hbox id="buttonsPanel" classNames="buttons-panel">
+            <button id="btnFillDetails" text="msg://msgFillDetails" autofocus="true" themeNames="primary"/>
             <button action="detailsDataGrid.create"/>
             <button action="detailsDataGrid.edit"/>
             <button action="detailsDataGrid.remove"/>
         </hbox>
         <dataGrid id="detailsDataGrid" dataContainer="detailsDc" width="100%" height="100%">
             <actions>
-                <action id="create" type="list_create"/>
-                <action id="edit" type="list_edit"/>
+                <action id="create" type="list_create">
+                    <properties>
+                        <property name="openMode" value="DIALOG"/>
+                    </properties>
+                </action>
+                <action id="edit" type="list_edit">
+                    <properties>
+                        <property name="openMode" value="DIALOG"/>
+                    </properties>
+                </action>
                 <action id="remove" type="list_remove"/>
             </actions>
             <columns>

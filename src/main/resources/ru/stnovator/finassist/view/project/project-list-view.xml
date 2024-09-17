@@ -33,6 +33,7 @@
             <properties include=".*"/>
         </genericFilter>
         <hbox id="buttonsPanel" classNames="buttons-panel">
+            <button id="createBtn" action="projectsDataGrid.create"/>
             <button id="editBtn" action="projectsDataGrid.edit"/>
             <button id="removeBtn" action="projectsDataGrid.remove"/>
             <simplePagination id="pagination" dataLoader="projectsDl"/>
@@ -43,6 +44,7 @@
                   dataContainer="projectsDc"
                   columnReorderingAllowed="true">
             <actions>
+                <action id="create" type="list_create"/>
                 <action id="edit" type="list_edit"/>
                 <action id="remove" type="list_remove"/>
             </actions>

@@ -6,7 +6,6 @@
         <instance id="workSheetDetailDc"
                   class="ru.stnovator.finassist.entity.WorkSheetDetail">
             <fetchPlan extends="_base">
-                <property name="workSheet" fetch="AUTO" fetchPlan="_base"/>
             </fetchPlan>
             <loader id="workSheetDetailDl"/>
         </instance>
@@ -22,12 +21,6 @@
         <formLayout id="form" dataContainer="workSheetDetailDc">
             <datePicker id="dateIntervalField" property="dateInterval"/>
             <textField id="sumField" property="sum"/>
-            <entityPicker id="workSheetField" property="workSheet">
-                <actions>
-                    <action id="entityLookup" type="entity_lookup"/>
-                    <action id="entityClear" type="entity_clear"/>
-                </actions>
-            </entityPicker>
         </formLayout>
         <hbox id="detailActions">
             <button id="saveAndCloseBtn" action="saveAction"/>

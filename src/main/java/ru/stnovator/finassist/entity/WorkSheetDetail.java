@@ -65,6 +65,7 @@ public class WorkSheetDetail {
     @NotNull
     private BigDecimal sum;
 
+    @NotNull
     @OnDeleteInverse(DeletePolicy.CASCADE)
     @JoinColumn(name = "WORK_SHEET_ID", nullable = false)
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
