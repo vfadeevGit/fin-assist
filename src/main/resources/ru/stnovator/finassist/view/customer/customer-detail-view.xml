@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<view xmlns="http://jmix.io/schema/flowui/view" xmlns:dynattr="http://jmix.io/schema/dynattr/flowui"
+<view xmlns="http://jmix.io/schema/flowui/view"
       title="msg://customerDetailView.title"
       focusComponent="form">
     <data>
@@ -10,7 +10,6 @@
         </instance>
     </data>
     <facets>
-        <dynattr:dynamicAttributes/>
         <dataLoadCoordinator auto="true"/>
     </facets>
     <actions>
@@ -20,10 +19,6 @@
     <layout>
         <formLayout id="form" dataContainer="customerDc">
             <textField id="nameField" property="name"/>
-        </formLayout>
-        <formLayout id="dynamicAttributes" dataContainer="customerDc" classNames="m-xs bg-base bg-contrast-20 shadow-m border-primary"
-                    width="50%">
-            <nativeLabel id="CategoryName"/>
         </formLayout>
         <hbox id="detailActions">
             <button id="saveAndCloseBtn" action="saveAction"/>

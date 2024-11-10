@@ -1,0 +1,48 @@
+name: finassist-project
+services:
+  postgres:
+    container_name: postgres
+    image: postgres:latest
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres:/var/lib/postgresql/data
+      - storage:/storage
+    environment:
+      - POSTGRES_USER=finassist
+      - POSTGRES_PASSWORD=finassist
+      - POSTGRES_DB=finassist_db
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin
+    ports:
+      - "8888:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: v.fadeev@haulmont.com
+      PGADMIN_DEFAULT_PASSWORD: 1234
+    volumes:
+      - pgadmin:/var/lib/pgadmin
+    depends_on:
+      - postgres
+  finassist:
+    platform: linux/amd64
+    container_name: finassist
+    image: finassist:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_VENDOR=postgresql
+      - DB_HOST=postgres
+      - DB_USER=finassist
+      - DB_PASSWORD=finassist
+      - DB_PORT=5432
+      - DB_NAME=finassist_db
+      - SPRING_PROFILES_ACTIVE=prod
+      - JAVA_TOOL_OPTIONS=-Xmx1548m -XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90 -XX:MinHeapFreeRatio=20 -XX:MaxHeapFreeRatio=40
+      - BPL_JVM_THREAD_COUNT=100
+    depends_on:
+      - postgres
+volumes:
+  postgres: {}
+  storage: {}
+  pgadmin: {}

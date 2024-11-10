@@ -8,6 +8,7 @@
                     class="ru.stnovator.finassist.entity.Project">
             <fetchPlan extends="_base">
                 <property name="lineOfBusiness" fetchPlan="_base"/>
+                <property name="contract" fetchPlan="_base"/>
             </fetchPlan>
             <loader id="projectsDl" readOnly="true">
                 <query>
@@ -50,6 +51,7 @@
             </actions>
             <columns resizable="true">
                 <column property="name"/>
+                <column property="contract"/>
                 <column property="lineOfBusiness"/>
             </columns>
         </dataGrid>

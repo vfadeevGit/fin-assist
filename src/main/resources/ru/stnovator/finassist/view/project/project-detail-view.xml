@@ -7,6 +7,7 @@
                   class="ru.stnovator.finassist.entity.Project">
             <fetchPlan extends="_base">
                 <property name="lineOfBusiness" fetchPlan="_base"/>
+                <property name="contract" fetchPlan="_base"/>
             </fetchPlan>
             <loader id="projectDl"/>
         </instance>
@@ -20,6 +21,12 @@
     </actions>
     <layout>
         <formLayout id="form" dataContainer="projectDc">
+            <entityPicker id="contractField" property="contract" readOnly="true">
+                <actions>
+                    <action id="entityLookup" type="entity_lookup"/>
+                    <action id="entityClear" type="entity_clear"/>
+                </actions>
+            </entityPicker>
             <textField id="nameField" property="name"/>
             <entityPicker id="lineOfBusinessField" property="lineOfBusiness">
                 <actions>

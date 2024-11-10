@@ -19,18 +19,19 @@
             <column name="LAST_MODIFIED_DATE" type="${offsetDateTime.type}"/>
             <column name="DELETED_BY" type="VARCHAR(255)"/>
             <column name="DELETED_DATE" type="${offsetDateTime.type}"/>
+            <column name="CUSTOMER_ID" type="UUID"/>
             <column name="INTERNAL_ID" type="VARCHAR(50)">
                 <constraints nullable="false"/>
             </column>
             <column name="INTERNAL_DATE" type="DATE">
                 <constraints nullable="false"/>
             </column>
-            <column name="DAYS_LONGITUDE" type="DECIMAL(19, 2)">
+            <column name="INTERNAL_DATE_END" type="DATE">
                 <constraints nullable="false"/>
             </column>
             <column name="PAYMENT_TYPE" type="VARCHAR(255)"/>
             <column name="SUM_TOTAL" type="DECIMAL(19, 2)"/>
-            <column name="DAYS_PAYMENT" type="DECIMAL(19, 2)"/>
+            <column name="DAYS_PAYMENT" type="DECIMAL(6)"/>
         </createTable>
     </changeSet>
     <changeSet id="2" author="fin-assist">
@@ -97,6 +98,60 @@
         </createTable>
     </changeSet>
     <changeSet id="5" author="fin-assist">
+        <createTable tableName="WORK_SHEET">
+            <column name="ID" type="UUID">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK_WORK_SHEET"/>
+            </column>
+            <column name="VERSION" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="CREATED_BY" type="VARCHAR(255)"/>
+            <column name="CREATED_DATE" type="${offsetDateTime.type}"/>
+            <column name="LAST_MODIFIED_BY" type="VARCHAR(255)"/>
+            <column name="LAST_MODIFIED_DATE" type="${offsetDateTime.type}"/>
+            <column name="DELETED_BY" type="VARCHAR(255)"/>
+            <column name="DELETED_DATE" type="${offsetDateTime.type}"/>
+            <column name="PROJECT_ID" type="UUID"/>
+            <column name="TYPE_" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+    <changeSet id="6" author="fin-assist">
+        <createTable tableName="WORK_SHEET_DETAIL">
+            <column name="ID" type="UUID">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK_WORK_SHEET_DETAIL"/>
+            </column>
+            <column name="VERSION" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="CREATED_BY" type="VARCHAR(255)"/>
+            <column name="CREATED_DATE" type="${offsetDateTime.type}"/>
+            <column name="LAST_MODIFIED_BY" type="VARCHAR(255)"/>
+            <column name="LAST_MODIFIED_DATE" type="${offsetDateTime.type}"/>
+            <column name="DELETED_BY" type="VARCHAR(255)"/>
+            <column name="DELETED_DATE" type="${offsetDateTime.type}"/>
+            <column name="DATE_INTERVAL" type="DATE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="SUM_" type="DECIMAL(19, 2)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="WORK_SHEET_ID" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+    <changeSet id="7" author="fin-assist">
+        <createIndex indexName="IDX_CONTRACT_CUSTOMER" tableName="CONTRACT">
+            <column name="CUSTOMER_ID"/>
+        </createIndex>
+
+        <addForeignKeyConstraint baseColumnNames="CUSTOMER_ID" baseTableName="CONTRACT"
+                                 constraintName="FK_CONTRACT_ON_CUSTOMER" referencedColumnNames="ID"
+                                 referencedTableName="CUSTOMER"/>
+    </changeSet>
+    <changeSet id="8" author="fin-assist">
         <createIndex indexName="IDX_PROJECT_CONTRACT" tableName="PROJECT">
             <column name="CONTRACT_ID"/>
         </createIndex>
@@ -105,7 +160,7 @@
                                  constraintName="FK_PROJECT_ON_CONTRACT" referencedColumnNames="ID"
                                  referencedTableName="CONTRACT"/>
     </changeSet>
-    <changeSet id="6" author="fin-assist">
+    <changeSet id="9" author="fin-assist">
         <createIndex indexName="IDX_PROJECT_LINE_OF_BUSINESS" tableName="PROJECT">
             <column name="LINE_OF_BUSINESS_ID"/>
         </createIndex>
@@ -113,5 +168,23 @@
         <addForeignKeyConstraint baseColumnNames="LINE_OF_BUSINESS_ID" baseTableName="PROJECT"
                                  constraintName="FK_PROJECT_ON_LINE_OF_BUSINESS" referencedColumnNames="ID"
                                  referencedTableName="LINE_OF_BUSINESS"/>
+    </changeSet>
+    <changeSet id="10" author="fin-assist">
+        <createIndex indexName="IDX_WORK_SHEET_DETAILS_WORK_SHEET" tableName="WORK_SHEET_DETAIL">
+            <column name="WORK_SHEET_ID"/>
+        </createIndex>
+
+        <addForeignKeyConstraint baseColumnNames="WORK_SHEET_ID" baseTableName="WORK_SHEET_DETAIL"
+                                 constraintName="FK_WORK_SHEET_DETAIL_ON_WORK_SHEET" referencedColumnNames="ID"
+                                 referencedTableName="WORK_SHEET"/>
+    </changeSet>
+    <changeSet id="11" author="fin-assist">
+        <createIndex indexName="IDX_WORK_SHEET_PROJECT" tableName="WORK_SHEET">
+            <column name="PROJECT_ID"/>
+        </createIndex>
+
+        <addForeignKeyConstraint baseColumnNames="PROJECT_ID" baseTableName="WORK_SHEET"
+                                 constraintName="FK_WORK_SHEET_ON_PROJECT" referencedColumnNames="ID"
+                                 referencedTableName="PROJECT"/>
     </changeSet>
 </databaseChangeLog>
