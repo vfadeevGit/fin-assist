@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<view xmlns="http://jmix.io/schema/flowui/view"
+      title="msg://ru.stnovator.finassist.view.shipmentschedulecorrection/ShipmentScheduleCorrectionListView.title"
+      focusComponent="shipmentScheduleCorrectionsDataGrid">
+    <data>
+        <collection id="shipmentScheduleCorrectionsDc"
+                    class="ru.stnovator.finassist.entity.ShipmentScheduleCorrection">
+            <fetchPlan extends="_base"/>
+            <loader id="shipmentScheduleCorrectionsDl" readOnly="true">
+                <query>
+                    <![CDATA[select e from ShipmentScheduleCorrection e]]>
+                </query>
+            </loader>
+        </collection>
+    </data>
+    <actions>
+        <action id="selectAction" type="lookup_select"/>
+        <action id="discardAction" type="lookup_discard"/>
+    </actions>
+    <facets>
+        <dataLoadCoordinator auto="true"/>
+        <urlQueryParameters>
+            <genericFilter component="genericFilter"/>
+            <pagination component="pagination"/>
+        </urlQueryParameters>
+    </facets>
+    <layout>
+        <genericFilter id="genericFilter"
+                       dataLoader="shipmentScheduleCorrectionsDl">
+            <properties include=".*"/>
+        </genericFilter>
+        <hbox id="buttonsPanel" classNames="buttons-panel">
+            <button id="createBtn" action="shipmentScheduleCorrectionsDataGrid.create"/>
+            <button id="editBtn" action="shipmentScheduleCorrectionsDataGrid.edit"/>
+            <button id="removeBtn" action="shipmentScheduleCorrectionsDataGrid.remove"/>
+            <simplePagination id="pagination" dataLoader="shipmentScheduleCorrectionsDl"/>
+        </hbox>
+        <dataGrid id="shipmentScheduleCorrectionsDataGrid"
+                  width="100%"
+                  columnReorderingAllowed="true"
+                  minHeight="20em"
+                  dataContainer="shipmentScheduleCorrectionsDc">
+            <actions>
+                <action id="create" type="list_create"/>
+                <action id="edit" type="list_edit"/>
+                <action id="remove" type="list_remove"/>
+            </actions>
+            <columns resizable="true">
+                <column property="addendum"/>
+                <column property="project"/>
+            </columns>
+        </dataGrid>
+        <hbox id="lookupActions" visible="false">
+            <button id="selectBtn" action="selectAction"/>
+            <button id="discardBtn" action="discardAction"/>
+        </hbox>
+    </layout>
+</view>

@@ -1,22 +1,22 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <view xmlns="http://jmix.io/schema/flowui/view"
-      xmlns:c="http://jmix.io/schema/flowui/jpql-condition"
-      title="msg://projectListView.title"
+      title="msg://ru.stnovator.finassist.view.project/projectListView.title"
       focusComponent="projectsDataGrid">
     <data>
         <collection id="projectsDc"
                     class="ru.stnovator.finassist.entity.Project">
-            <fetchPlan extends="_base">
-                <property name="lineOfBusiness" fetchPlan="_base"/>
-                <property name="contract" fetchPlan="_base"/>
-            </fetchPlan>
+            <fetchPlan extends="_base"/>
             <loader id="projectsDl" readOnly="true">
                 <query>
-                    <![CDATA[select e from Project e]]>
+                    <![CDATA[select e from Project e order by e.name]]>
                 </query>
             </loader>
         </collection>
     </data>
+    <actions>
+        <action id="selectAction" type="lookup_select"/>
+        <action id="discardAction" type="lookup_discard"/>
+    </actions>
     <facets>
         <dataLoadCoordinator auto="true"/>
         <urlQueryParameters>
@@ -24,10 +24,6 @@
             <pagination component="pagination"/>
         </urlQueryParameters>
     </facets>
-    <actions>
-        <action id="selectAction" type="lookup_select"/>
-        <action id="discardAction" type="lookup_discard"/>
-    </actions>
     <layout>
         <genericFilter id="genericFilter"
                        dataLoader="projectsDl">
@@ -41,9 +37,9 @@
         </hbox>
         <dataGrid id="projectsDataGrid"
                   width="100%"
+                  columnReorderingAllowed="true"
                   minHeight="20em"
-                  dataContainer="projectsDc"
-                  columnReorderingAllowed="true">
+                  dataContainer="projectsDc">
             <actions>
                 <action id="create" type="list_create"/>
                 <action id="edit" type="list_edit"/>

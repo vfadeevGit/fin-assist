@@ -1,68 +1,31 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <view xmlns="http://jmix.io/schema/flowui/view"
-      title="msg://contractDetailView.title"
+      title="msg://ru.stnovator.finassist.view.contract/contractDetailView.title"
       focusComponent="form">
     <data>
         <instance id="contractDc"
                   class="ru.stnovator.finassist.entity.Contract">
-            <fetchPlan extends="_base">
-                <property name="projects" fetchPlan="_base">
-                    <property name="lineOfBusiness" fetch="AUTO" fetchPlan="_base"/>
-                </property>
-                <property name="customer" fetchPlan="_base"/>
-            </fetchPlan>
-            <loader id="contractDl"/>
-            <collection id="projectsDc" property="projects"/>
+            <fetchPlan extends="_base"/>
+            <loader/>
         </instance>
     </data>
-    <facets>
-        <dataLoadCoordinator auto="true"/>
-    </facets>
     <actions>
         <action id="saveAction" type="detail_saveClose"/>
         <action id="closeAction" type="detail_close"/>
     </actions>
+    <facets>
+        <dataLoadCoordinator auto="true"/>
+    </facets>
     <layout>
         <formLayout id="form" dataContainer="contractDc">
-            <entityPicker id="customerField" property="customer">
-                <actions>
-                    <action id="entityLookup" type="entity_lookup"/>
-                    <action id="entityClear" type="entity_clear"/>
-                </actions>
-            </entityPicker>
+            <entityPicker id="customerField" property="customer"/>
             <textField id="internalIDField" property="internalID"/>
-            <datePicker id="internalDateBeginField" property="internalDateBegin"/>
-            <datePicker id="internalDateEndField" property="internalDateEnd"/>
-            <bigDecimalField id="daysLongitudeField" property="daysLongitude" readOnly="true"/>
-            <select id="paymentTypeField" property="paymentType"/>
-            <textField id="sumTotalField" property="sumTotal"/>
-            <textField id="daysPaymentField" property="daysPayment"/>
+            <datePicker id="startDateField" property="startDate"/>
+            <datePicker id="endDateField" property="endDate"/>
+            <comboBox id="paymentTypeField" property="paymentType"/>
+            <textField id="paymentDaysField" property="paymentDays"/>
+            <textField id="totalAmountField" property="totalAmount"/>
         </formLayout>
-        <h4 text="msg://ru.stnovator.finassist.entity/Contract.projects"/>
-        <hbox id="buttonsPanel" classNames="buttons-panel">
-            <button action="projectsDataGrid.create"/>
-            <button action="projectsDataGrid.edit"/>
-            <button action="projectsDataGrid.remove"/>
-        </hbox>
-        <dataGrid id="projectsDataGrid" dataContainer="projectsDc" width="100%" minHeight="20em">
-            <actions>
-                <action id="create" type="list_create">
-                    <properties>
-                        <property name="openMode" value="DIALOG"/>
-                    </properties>
-                </action>
-                <action id="edit" type="list_edit">
-                    <properties>
-                        <property name="openMode" value="DIALOG"/>
-                    </properties>
-                </action>
-                <action id="remove" type="list_remove"/>
-            </actions>
-            <columns>
-                <column property="name"/>
-                <column property="lineOfBusiness"/>
-            </columns>
-        </dataGrid>
         <hbox id="detailActions">
             <button id="saveAndCloseBtn" action="saveAction"/>
             <button id="closeBtn" action="closeAction"/>

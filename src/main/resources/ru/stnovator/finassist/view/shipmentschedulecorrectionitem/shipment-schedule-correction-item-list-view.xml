@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<view xmlns="http://jmix.io/schema/flowui/view"
+      title="msg://ru.stnovator.finassist.view.shipmentschedulecorrectionitem/ShipmentScheduleCorrectionItemListView.title"
+      focusComponent="shipmentScheduleCorrectionItemsDataGrid">
+    <data>
+        <collection id="shipmentScheduleCorrectionItemsDc"
+                    class="ru.stnovator.finassist.entity.ShipmentScheduleCorrectionItem">
+            <fetchPlan extends="_base"/>
+            <loader id="shipmentScheduleCorrectionItemsDl" readOnly="true">
+                <query>
+                    <![CDATA[select e from ShipmentScheduleCorrectionItem e order by e.itemDate]]>
+                </query>
+            </loader>
+        </collection>
+    </data>
+    <actions>
+        <action id="selectAction" type="lookup_select"/>
+        <action id="discardAction" type="lookup_discard"/>
+    </actions>
+    <facets>
+        <dataLoadCoordinator auto="true"/>
+        <urlQueryParameters>
+            <genericFilter component="genericFilter"/>
+            <pagination component="pagination"/>
+        </urlQueryParameters>
+    </facets>
+    <layout>
+        <genericFilter id="genericFilter"
+                       dataLoader="shipmentScheduleCorrectionItemsDl">
+            <properties include=".*"/>
+        </genericFilter>
+        <hbox id="buttonsPanel" classNames="buttons-panel">
+            <button id="createBtn" action="shipmentScheduleCorrectionItemsDataGrid.create"/>
+            <button id="editBtn" action="shipmentScheduleCorrectionItemsDataGrid.edit"/>
+            <button id="removeBtn" action="shipmentScheduleCorrectionItemsDataGrid.remove"/>
+            <simplePagination id="pagination" dataLoader="shipmentScheduleCorrectionItemsDl"/>
+        </hbox>
+        <dataGrid id="shipmentScheduleCorrectionItemsDataGrid"
+                  width="100%"
+                  columnReorderingAllowed="true"
+                  minHeight="20em"
+                  dataContainer="shipmentScheduleCorrectionItemsDc">
+            <actions>
+                <action id="create" type="list_create"/>
+                <action id="edit" type="list_edit"/>
+                <action id="remove" type="list_remove"/>
+            </actions>
+            <columns resizable="true">
+                <column property="correction"/>
+                <column property="itemDate"/>
+                <column property="amount"/>
+            </columns>
+        </dataGrid>
+        <hbox id="lookupActions" visible="false">
+            <button id="selectBtn" action="selectAction"/>
+            <button id="discardBtn" action="discardAction"/>
+        </hbox>
+    </layout>
+</view>

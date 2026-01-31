@@ -71,20 +71,20 @@ public class Contract {
 
     @Column(name = "INTERNAL_DATE", nullable = false)
     @NotNull
-    private LocalDate internalDateBegin;
+    private LocalDate startDate;
 
     @NotNull
     @Column(name = "INTERNAL_DATE_END", nullable = false)
-    private LocalDate internalDateEnd;
+    private LocalDate endDate;
 
     @Column(name = "PAYMENT_TYPE")
     private String paymentType;
 
     @Column(name = "SUM_TOTAL", precision = 19, scale = 2)
-    private BigDecimal sumTotal;
+    private BigDecimal totalAmount;
 
     @Column(name = "DAYS_PAYMENT", precision = 6, scale = 0)
-    private BigDecimal daysPayment;
+    private BigDecimal paymentDays;
 
     @OrderBy("name")
     @OnDelete(DeletePolicy.CASCADE)
@@ -92,10 +92,16 @@ public class Contract {
     @OneToMany(mappedBy = "contract")
     private List<Project> projects;
 
+    @OrderBy("effectiveDate")
+    @OnDelete(DeletePolicy.CASCADE)
+    @Composition
+    @OneToMany(mappedBy = "contract")
+    private List<Addendum> addenda;
+
     @NumberFormat(pattern = "", decimalSeparator = "6", groupingSeparator = "0")
     @JmixProperty
     @Transient
-    private BigDecimal daysLongitude;
+    private BigDecimal durationDays;
 
     public Customer getCustomer() {
         return customer;
@@ -105,13 +111,13 @@ public class Contract {
         this.customer = customer;
     }
 
-    public LocalDate getInternalDateEnd() {
-        return internalDateEnd;
+    public LocalDate getEndDate() {
+        return endDate;
     }
 
-    public void setInternalDateEnd(LocalDate internalDateEnd) {
+    public void setEndDate(LocalDate endDate) {
         //TODO: Check that it is not earlier than begin date
-        this.internalDateEnd = internalDateEnd;
+        this.endDate = endDate;
     }
 
     public ContractType getPaymentType() {
@@ -122,20 +128,20 @@ public class Contract {
         this.paymentType = paymentType == null ? null : paymentType.getId();
     }
 
-    public BigDecimal getDaysPayment() {
-        return daysPayment;
+    public BigDecimal getPaymentDays() {
+        return paymentDays;
     }
 
-    public void setDaysPayment(BigDecimal daysPayment) {
-        this.daysPayment = daysPayment;
+    public void setPaymentDays(BigDecimal paymentDays) {
+        this.paymentDays = paymentDays;
     }
 
-    public BigDecimal getSumTotal() {
-        return sumTotal;
+    public BigDecimal getTotalAmount() {
+        return totalAmount;
     }
 
-    public void setSumTotal(BigDecimal sumTotal) {
-        this.sumTotal = sumTotal;
+    public void setTotalAmount(BigDecimal totalAmount) {
+        this.totalAmount = totalAmount;
     }
 
     public List<Project> getProjects() {
@@ -146,21 +152,29 @@ public class Contract {
         this.projects = projects;
     }
 
-    public BigDecimal getDaysLongitude() {
-        if (this.internalDateBegin == null || this.internalDateEnd == null) {
-            return this.daysLongitude = BigDecimal.valueOf(0);
+    public List<Addendum> getAddenda() {
+        return addenda;
+    }
+
+    public void setAddenda(List<Addendum> addenda) {
+        this.addenda = addenda;
+    }
+
+    public BigDecimal getDurationDays() {
+        if (this.startDate == null || this.endDate == null) {
+            return this.durationDays = BigDecimal.valueOf(0);
         } else {
-            return this.daysLongitude = BigDecimal.valueOf(ChronoUnit.DAYS.between(this.internalDateBegin, this.internalDateEnd));
+            return this.durationDays = BigDecimal.valueOf(ChronoUnit.DAYS.between(this.startDate, this.endDate));
         }
     }
 
-    public LocalDate getInternalDateBegin() {
-        return internalDateBegin;
+    public LocalDate getStartDate() {
+        return startDate;
     }
 
-    public void setInternalDateBegin(LocalDate internalDateBegin) {
+    public void setStartDate(LocalDate startDate) {
         //TODO: Check that it is not later than end date
-        this.internalDateBegin = internalDateBegin;
+        this.startDate = startDate;
     }
 
     public String getInternalID() {
@@ -236,11 +250,11 @@ public class Contract {
     }
 
     @InstanceName
-    @DependsOnProperties({"customer", "internalID", "internalDateBegin"})
+    @DependsOnProperties({"customer", "internalID", "startDate"})
     public String getInstanceName(MetadataTools metadataTools, DatatypeFormatter datatypeFormatter) {
         return String.format("%s %s %s",
                 metadataTools.format(customer),
                 metadataTools.format(internalID),
-                datatypeFormatter.formatLocalDate(internalDateBegin));
+                datatypeFormatter.formatLocalDate(startDate));
     }
 }

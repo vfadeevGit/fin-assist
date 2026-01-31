@@ -1,39 +1,26 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <view xmlns="http://jmix.io/schema/flowui/view"
-      title="msg://projectDetailView.title"
+      title="msg://ru.stnovator.finassist.view.project/projectDetailView.title"
       focusComponent="form">
     <data>
         <instance id="projectDc"
                   class="ru.stnovator.finassist.entity.Project">
-            <fetchPlan extends="_base">
-                <property name="lineOfBusiness" fetchPlan="_base"/>
-                <property name="contract" fetchPlan="_base"/>
-            </fetchPlan>
-            <loader id="projectDl"/>
+            <fetchPlan extends="_base"/>
+            <loader/>
         </instance>
     </data>
-    <facets>
-        <dataLoadCoordinator auto="true"/>
-    </facets>
     <actions>
         <action id="saveAction" type="detail_saveClose"/>
         <action id="closeAction" type="detail_close"/>
     </actions>
+    <facets>
+        <dataLoadCoordinator auto="true"/>
+    </facets>
     <layout>
         <formLayout id="form" dataContainer="projectDc">
-            <entityPicker id="contractField" property="contract" readOnly="true">
-                <actions>
-                    <action id="entityLookup" type="entity_lookup"/>
-                    <action id="entityClear" type="entity_clear"/>
-                </actions>
-            </entityPicker>
             <textField id="nameField" property="name"/>
-            <entityPicker id="lineOfBusinessField" property="lineOfBusiness">
-                <actions>
-                    <action id="entityLookup" type="entity_lookup"/>
-                    <action id="entityClear" type="entity_clear"/>
-                </actions>
-            </entityPicker>
+            <entityPicker id="contractField" property="contract"/>
+            <entityPicker id="lineOfBusinessField" property="lineOfBusiness"/>
         </formLayout>
         <hbox id="detailActions">
             <button id="saveAndCloseBtn" action="saveAction"/>

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<view xmlns="http://jmix.io/schema/flowui/view"
+      title="msg://ru.stnovator.finassist.view.addendum/AddendumListView.title"
+      focusComponent="addendaDataGrid">
+    <data>
+        <collection id="addendaDc"
+                    class="ru.stnovator.finassist.entity.Addendum">
+            <fetchPlan extends="_base"/>
+            <loader id="addendaDl" readOnly="true">
+                <query>
+                    <![CDATA[select e from Addendum e order by e.effectiveDate desc]]>
+                </query>
+            </loader>
+        </collection>
+    </data>
+    <actions>
+        <action id="selectAction" type="lookup_select"/>
+        <action id="discardAction" type="lookup_discard"/>
+    </actions>
+    <facets>
+        <dataLoadCoordinator auto="true"/>
+        <urlQueryParameters>
+            <genericFilter component="genericFilter"/>
+            <pagination component="pagination"/>
+        </urlQueryParameters>
+    </facets>
+    <layout>
+        <genericFilter id="genericFilter"
+                       dataLoader="addendaDl">
+            <properties include=".*"/>
+        </genericFilter>
+        <hbox id="buttonsPanel" classNames="buttons-panel">
+            <button id="createBtn" action="addendaDataGrid.create"/>
+            <button id="editBtn" action="addendaDataGrid.edit"/>
+            <button id="removeBtn" action="addendaDataGrid.remove"/>
+            <simplePagination id="pagination" dataLoader="addendaDl"/>
+        </hbox>
+        <dataGrid id="addendaDataGrid"
+                  width="100%"
+                  columnReorderingAllowed="true"
+                  minHeight="20em"
+                  dataContainer="addendaDc">
+            <actions>
+                <action id="create" type="list_create"/>
+                <action id="edit" type="list_edit"/>
+                <action id="remove" type="list_remove"/>
+            </actions>
+            <columns resizable="true">
+                <column property="number"/>
+                <column property="effectiveDate"/>
+                <column property="contract"/>
+            </columns>
+        </dataGrid>
+        <hbox id="lookupActions" visible="false">
+            <button id="selectBtn" action="selectAction"/>
+            <button id="discardBtn" action="discardAction"/>
+        </hbox>
+    </layout>
+</view>

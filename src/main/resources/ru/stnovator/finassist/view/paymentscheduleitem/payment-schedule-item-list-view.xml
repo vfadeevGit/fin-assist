@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<view xmlns="http://jmix.io/schema/flowui/view"
+      title="msg://ru.stnovator.finassist.view.paymentscheduleitem/PaymentScheduleItemListView.title"
+      focusComponent="paymentScheduleItemsDataGrid">
+    <data>
+        <collection id="paymentScheduleItemsDc"
+                    class="ru.stnovator.finassist.entity.PaymentScheduleItem">
+            <fetchPlan extends="_base"/>
+            <loader id="paymentScheduleItemsDl" readOnly="true">
+                <query>
+                    <![CDATA[select e from PaymentScheduleItem e order by e.itemDate]]>
+                </query>
+            </loader>
+        </collection>
+    </data>
+    <actions>
+        <action id="selectAction" type="lookup_select"/>
+        <action id="discardAction" type="lookup_discard"/>
+    </actions>
+    <facets>
+        <dataLoadCoordinator auto="true"/>
+        <urlQueryParameters>
+            <genericFilter component="genericFilter"/>
+            <pagination component="pagination"/>
+        </urlQueryParameters>
+    </facets>
+    <layout>
+        <genericFilter id="genericFilter"
+                       dataLoader="paymentScheduleItemsDl">
+            <properties include=".*"/>
+        </genericFilter>
+        <hbox id="buttonsPanel" classNames="buttons-panel">
+            <button id="createBtn" action="paymentScheduleItemsDataGrid.create"/>
+            <button id="editBtn" action="paymentScheduleItemsDataGrid.edit"/>
+            <button id="removeBtn" action="paymentScheduleItemsDataGrid.remove"/>
+            <simplePagination id="pagination" dataLoader="paymentScheduleItemsDl"/>
+        </hbox>
+        <dataGrid id="paymentScheduleItemsDataGrid"
+                  width="100%"
+                  columnReorderingAllowed="true"
+                  minHeight="20em"
+                  dataContainer="paymentScheduleItemsDc">
+            <actions>
+                <action id="create" type="list_create"/>
+                <action id="edit" type="list_edit"/>
+                <action id="remove" type="list_remove"/>
+            </actions>
+            <columns resizable="true">
+                <column property="schedule"/>
+                <column property="itemDate"/>
+                <column property="amount"/>
+            </columns>
+        </dataGrid>
+        <hbox id="lookupActions" visible="false">
+            <button id="selectBtn" action="selectAction"/>
+            <button id="discardBtn" action="discardAction"/>
+        </hbox>
+    </layout>
+</view>

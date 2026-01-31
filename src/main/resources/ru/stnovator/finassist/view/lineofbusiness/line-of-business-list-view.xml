@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <view xmlns="http://jmix.io/schema/flowui/view"
-      xmlns:c="http://jmix.io/schema/flowui/jpql-condition"
-      title="msg://lineOfBusinessListView.title"
+      title="msg://ru.stnovator.finassist.view.lineofbusiness/lineOfBusinessListView.title"
       focusComponent="lineOfBusinessesDataGrid">
     <data>
         <collection id="lineOfBusinessesDc"
@@ -9,11 +8,15 @@
             <fetchPlan extends="_base"/>
             <loader id="lineOfBusinessesDl" readOnly="true">
                 <query>
-                    <![CDATA[select e from LineOfBusiness e]]>
+                    <![CDATA[select e from LineOfBusiness e order by e.name]]>
                 </query>
             </loader>
         </collection>
     </data>
+    <actions>
+        <action id="selectAction" type="lookup_select"/>
+        <action id="discardAction" type="lookup_discard"/>
+    </actions>
     <facets>
         <dataLoadCoordinator auto="true"/>
         <urlQueryParameters>
@@ -21,10 +24,6 @@
             <pagination component="pagination"/>
         </urlQueryParameters>
     </facets>
-    <actions>
-        <action id="selectAction" type="lookup_select"/>
-        <action id="discardAction" type="lookup_discard"/>
-    </actions>
     <layout>
         <genericFilter id="genericFilter"
                        dataLoader="lineOfBusinessesDl">
@@ -38,20 +37,16 @@
         </hbox>
         <dataGrid id="lineOfBusinessesDataGrid"
                   width="100%"
+                  columnReorderingAllowed="true"
                   minHeight="20em"
-                  dataContainer="lineOfBusinessesDc"
-                  columnReorderingAllowed="true">
+                  dataContainer="lineOfBusinessesDc">
             <actions>
                 <action id="create" type="list_create"/>
                 <action id="edit" type="list_edit"/>
                 <action id="remove" type="list_remove"/>
             </actions>
             <columns resizable="true">
-                <column property="name" editable="true"/>
-                <editorActionsColumn key="nonBufferedEditorColumn">
-                    <editButton text="Edit" icon="PENCIL"/>
-                    <closeButton text="Close" icon="CLOSE"/>
-                </editorActionsColumn>
+                <column property="name"/>
             </columns>
         </dataGrid>
         <hbox id="lookupActions" visible="false">

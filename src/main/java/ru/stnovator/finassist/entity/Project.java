@@ -4,7 +4,9 @@ import io.jmix.core.DeletePolicy;
 import io.jmix.core.annotation.DeletedBy;
 import io.jmix.core.annotation.DeletedDate;
 import io.jmix.core.entity.annotation.JmixGeneratedValue;
+import io.jmix.core.entity.annotation.OnDelete;
 import io.jmix.core.entity.annotation.OnDeleteInverse;
+import io.jmix.core.metamodel.annotation.Composition;
 import io.jmix.core.metamodel.annotation.InstanceName;
 import io.jmix.core.metamodel.annotation.JmixEntity;
 import jakarta.persistence.*;
@@ -72,12 +74,38 @@ public class Project {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     private Contract contract;
 
+    @OnDelete(DeletePolicy.CASCADE)
+    @Composition
+    @OneToOne(mappedBy = "project")
+    private ShipmentSchedule shipmentSchedule;
+
+    @OnDelete(DeletePolicy.CASCADE)
+    @Composition
+    @OneToOne(mappedBy = "project")
+    private PaymentSchedule paymentSchedule;
+
     public Contract getContract() {
         return contract;
     }
 
     public void setContract(Contract contract) {
         this.contract = contract;
+    }
+
+    public ShipmentSchedule getShipmentSchedule() {
+        return shipmentSchedule;
+    }
+
+    public void setShipmentSchedule(ShipmentSchedule shipmentSchedule) {
+        this.shipmentSchedule = shipmentSchedule;
+    }
+
+    public PaymentSchedule getPaymentSchedule() {
+        return paymentSchedule;
+    }
+
+    public void setPaymentSchedule(PaymentSchedule paymentSchedule) {
+        this.paymentSchedule = paymentSchedule;
     }
 
     public LineOfBusiness getLineOfBusiness() {

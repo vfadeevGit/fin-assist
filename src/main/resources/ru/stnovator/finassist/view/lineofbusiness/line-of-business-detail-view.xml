@@ -1,21 +1,21 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <view xmlns="http://jmix.io/schema/flowui/view"
-      title="msg://lineOfBusinessDetailView.title"
+      title="msg://ru.stnovator.finassist.view.lineofbusiness/lineOfBusinessDetailView.title"
       focusComponent="form">
     <data>
         <instance id="lineOfBusinessDc"
                   class="ru.stnovator.finassist.entity.LineOfBusiness">
             <fetchPlan extends="_base"/>
-            <loader id="lineOfBusinessDl"/>
+            <loader/>
         </instance>
     </data>
-    <facets>
-        <dataLoadCoordinator auto="true"/>
-    </facets>
     <actions>
         <action id="saveAction" type="detail_saveClose"/>
         <action id="closeAction" type="detail_close"/>
     </actions>
+    <facets>
+        <dataLoadCoordinator auto="true"/>
+    </facets>
     <layout>
         <formLayout id="form" dataContainer="lineOfBusinessDc">
             <textField id="nameField" property="name"/>

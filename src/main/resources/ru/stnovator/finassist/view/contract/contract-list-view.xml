@@ -1,21 +1,22 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <view xmlns="http://jmix.io/schema/flowui/view"
-      xmlns:c="http://jmix.io/schema/flowui/jpql-condition"
-      title="msg://contractListView.title"
+      title="msg://ru.stnovator.finassist.view.contract/contractListView.title"
       focusComponent="contractsDataGrid">
     <data>
         <collection id="contractsDc"
                     class="ru.stnovator.finassist.entity.Contract">
-            <fetchPlan extends="_base">
-                <property name="customer" fetchPlan="_base"/>
-            </fetchPlan>
+            <fetchPlan extends="_base"/>
             <loader id="contractsDl" readOnly="true">
                 <query>
-                    <![CDATA[select e from Contract e]]>
+                    <![CDATA[select e from Contract e order by e.startDate desc]]>
                 </query>
             </loader>
         </collection>
     </data>
+    <actions>
+        <action id="selectAction" type="lookup_select"/>
+        <action id="discardAction" type="lookup_discard"/>
+    </actions>
     <facets>
         <dataLoadCoordinator auto="true"/>
         <urlQueryParameters>
@@ -23,10 +24,6 @@
             <pagination component="pagination"/>
         </urlQueryParameters>
     </facets>
-    <actions>
-        <action id="selectAction" type="lookup_select"/>
-        <action id="discardAction" type="lookup_discard"/>
-    </actions>
     <layout>
         <genericFilter id="genericFilter"
                        dataLoader="contractsDl">
@@ -40,23 +37,20 @@
         </hbox>
         <dataGrid id="contractsDataGrid"
                   width="100%"
+                  columnReorderingAllowed="true"
                   minHeight="20em"
-                  dataContainer="contractsDc"
-                  columnReorderingAllowed="true">
+                  dataContainer="contractsDc">
             <actions>
                 <action id="create" type="list_create"/>
                 <action id="edit" type="list_edit"/>
                 <action id="remove" type="list_remove"/>
             </actions>
             <columns resizable="true">
-                <column property="customer"/>
                 <column property="internalID"/>
-                <column property="internalDateBegin"/>
-                <column property="internalDateEnd"/>
-                <column property="daysLongitude"/>
-                <column property="paymentType"/>
-                <column property="daysPayment"/>
-                <column property="sumTotal"/>
+                <column property="startDate"/>
+                <column property="endDate"/>
+                <column property="customer"/>
+                <column property="totalAmount"/>
             </columns>
         </dataGrid>
         <hbox id="lookupActions" visible="false">

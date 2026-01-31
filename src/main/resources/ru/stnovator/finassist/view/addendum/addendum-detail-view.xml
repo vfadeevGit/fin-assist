@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<view xmlns="http://jmix.io/schema/flowui/view"
+      title="msg://ru.stnovator.finassist.view.addendum/AddendumDetailView.title"
+      focusComponent="form">
+    <data>
+        <instance id="addendumDc"
+                  class="ru.stnovator.finassist.entity.Addendum">
+            <fetchPlan extends="_base"/>
+            <loader/>
+        </instance>
+    </data>
+    <actions>
+        <action id="saveAction" type="detail_saveClose"/>
+        <action id="closeAction" type="detail_close"/>
+    </actions>
+    <facets>
+        <dataLoadCoordinator auto="true"/>
+    </facets>
+    <layout>
+        <formLayout id="form" dataContainer="addendumDc">
+            <entityPicker id="contractField" property="contract"/>
+            <textField id="numberField" property="number"/>
+            <datePicker id="effectiveDateField" property="effectiveDate"/>
+        </formLayout>
+        <hbox id="detailActions">
+            <button id="saveAndCloseBtn" action="saveAction"/>
+            <button id="closeBtn" action="closeAction"/>
+        </hbox>
+    </layout>
+</view>

@@ -8,7 +8,7 @@ import io.jmix.flowui.view.ViewDescriptor;
 import ru.stnovator.finassist.entity.LineOfBusiness;
 import ru.stnovator.finassist.view.main.MainView;
 
-@Route(value = "lineOfBusinesses/:id", layout = MainView.class)
+@Route(value = "line-of-business/:id", layout = MainView.class)
 @ViewController("LineOfBusiness.detail")
 @ViewDescriptor("line-of-business-detail-view.xml")
 @EditedEntityContainer("lineOfBusinessDc")
