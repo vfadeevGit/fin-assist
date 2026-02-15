@@ -5,8 +5,13 @@
     <data>
         <instance id="contractDc"
                   class="ru.stnovator.finassist.entity.Contract">
-            <fetchPlan extends="_base"/>
+            <fetchPlan extends="_base">
+                <property name="projects" fetchPlan="_base">
+                    <property name="lineOfBusiness" fetchPlan="_base"/>
+                </property>
+            </fetchPlan>
             <loader/>
+            <collection id="projectsDc" property="projects"/>
         </instance>
     </data>
     <actions>
@@ -18,7 +23,12 @@
     </facets>
     <layout>
         <formLayout id="form" dataContainer="contractDc">
-            <entityPicker id="customerField" property="customer"/>
+            <entityPicker property="customer">
+                <actions>
+                    <action id="entityLookupAction" type="entity_lookup"/>
+                    <action id="entityClearAction" type="entity_clear"/>
+                </actions>
+            </entityPicker>
             <textField id="internalIDField" property="internalID"/>
             <datePicker id="startDateField" property="startDate"/>
             <datePicker id="endDateField" property="endDate"/>
@@ -26,6 +36,33 @@
             <textField id="paymentDaysField" property="paymentDays"/>
             <textField id="totalAmountField" property="totalAmount"/>
         </formLayout>
+        <h4 text="msg://ru.stnovator.finassist.entity/Contract.projects"/>
+        <hbox id="projectsButtonsPanel" classNames="buttons-panel">
+            <button id="createProjectBtn" action="projectsDataGrid.create"/>
+            <button id="editProjectBtn" action="projectsDataGrid.edit"/>
+            <button id="removeProjectBtn" action="projectsDataGrid.remove"/>
+        </hbox>
+        <dataGrid id="projectsDataGrid" dataContainer="projectsDc" width="100%" minHeight="16em">
+            <actions>
+                <action id="create" type="list_create">
+                    <properties>
+                        <property name="openMode" value="DIALOG"/>
+                        <property name="viewId" value="Project.detail"/>
+                    </properties>
+                </action>
+                <action id="edit" type="list_edit">
+                    <properties>
+                        <property name="openMode" value="DIALOG"/>
+                        <property name="viewId" value="Project.detail"/>
+                    </properties>
+                </action>
+                <action id="remove" type="list_remove"/>
+            </actions>
+            <columns>
+                <column property="name"/>
+                <column property="lineOfBusiness"/>
+            </columns>
+        </dataGrid>
         <hbox id="detailActions">
             <button id="saveAndCloseBtn" action="saveAction"/>
             <button id="closeBtn" action="closeAction"/>

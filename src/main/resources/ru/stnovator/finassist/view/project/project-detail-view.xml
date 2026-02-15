@@ -19,8 +19,17 @@
     <layout>
         <formLayout id="form" dataContainer="projectDc">
             <textField id="nameField" property="name"/>
-            <entityPicker id="contractField" property="contract"/>
-            <entityPicker id="lineOfBusinessField" property="lineOfBusiness"/>
+            <entityPicker id="contractField" property="contract">
+                <actions>
+                    <action id="openAction_1" type="entity_open"/>
+                </actions>
+            </entityPicker>
+            <entityPicker id="lineOfBusinessField" property="lineOfBusiness">
+                <actions>
+                    <action id="openAction" type="entity_open"/>
+                    <action id="lookupAction_1" type="entity_lookup"/>
+                </actions>
+            </entityPicker>
         </formLayout>
         <hbox id="detailActions">
             <button id="saveAndCloseBtn" action="saveAction"/>

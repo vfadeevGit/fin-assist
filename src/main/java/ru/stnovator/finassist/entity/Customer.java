@@ -57,6 +57,28 @@ public class Customer {
     @NotNull
     private String name;
 
+    @Column(name = "INN", length = 12)
+    private String inn;
+
+    @Column(name = "KPP", length = 9)
+    private String kpp;
+
+    public String getInn() {
+        return inn;
+    }
+
+    public void setInn(String inn) {
+        this.inn = inn;
+    }
+
+    public String getKpp() {
+        return kpp;
+    }
+
+    public void setKpp(String kpp) {
+        this.kpp = kpp;
+    }
+
     public String getName() {
         return name;
     }

@@ -1,3 +1,5 @@
+Automatically use context7 library jmix-framework/jmix-context7 for code generation and framework documentation.
+
 # Repository Guidelines
 
 ## Project Structure & Module Organization
