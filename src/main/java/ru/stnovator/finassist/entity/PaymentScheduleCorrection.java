@@ -75,7 +75,7 @@ public class PaymentScheduleCorrection {
     @NotNull
     private Project project;
 
-    @OrderBy("itemDate")
+    @OrderBy("itemDate ASC")
     @Composition
     @OnDelete(DeletePolicy.CASCADE)
     @OneToMany(mappedBy = "correction")

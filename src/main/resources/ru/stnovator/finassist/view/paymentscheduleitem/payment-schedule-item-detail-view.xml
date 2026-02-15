@@ -18,9 +18,8 @@
     </facets>
     <layout>
         <formLayout id="form" dataContainer="paymentScheduleItemDc">
-            <entityPicker id="scheduleField" property="schedule"/>
-            <datePicker id="itemDateField" property="itemDate"/>
-            <textField id="amountField" property="amount"/>
+            <datePicker id="itemDateField" property="itemDate" label="msg://itemDateField.label"/>
+            <textField id="amountField" property="amount" label="msg://amountField.label"/>
         </formLayout>
         <hbox id="detailActions">
             <button id="saveAndCloseBtn" action="saveAction"/>

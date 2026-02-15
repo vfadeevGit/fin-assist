@@ -5,7 +5,12 @@
     <data>
         <collection id="paymentSchedulesDc"
                     class="ru.stnovator.finassist.entity.PaymentSchedule">
-            <fetchPlan extends="_base"/>
+            <fetchPlan extends="_base">
+                <property fetchPlan="_base" name="project">
+                    <property fetchPlan="_base" name="contract"/>
+                    <property fetchPlan="_base" name="lineOfBusiness"/>
+                </property>
+            </fetchPlan>
             <loader id="paymentSchedulesDl" readOnly="true">
                 <query>
                     <![CDATA[select e from PaymentSchedule e]]>
@@ -46,7 +51,18 @@
                 <action id="remove" type="list_remove"/>
             </actions>
             <columns resizable="true">
-                <column property="project"/>
+                <column property="project.contract.customer"
+                        header="msg://ru.stnovator.finassist.view.paymentschedule/PaymentScheduleListView.customer"/>
+                <column property="project.contract"
+                        header="msg://ru.stnovator.finassist.view.paymentschedule/PaymentScheduleListView.contract"/>
+                <column property="project"
+                        header="msg://ru.stnovator.finassist.view.paymentschedule/PaymentScheduleListView.project"/>
+                <column property="project.lineOfBusiness"
+                        header="msg://PaymentScheduleListView.LineOfBusiness"/>
+                <column property="createdDate"
+                        header="msg://ru.stnovator.finassist.view.paymentschedule/PaymentScheduleListView.createdDate"/>
+                <column property="lastModifiedDate"
+                        header="msg://ru.stnovator.finassist.view.paymentschedule/PaymentScheduleListView.lastModifiedDate"/>
             </columns>
         </dataGrid>
         <hbox id="lookupActions" visible="false">

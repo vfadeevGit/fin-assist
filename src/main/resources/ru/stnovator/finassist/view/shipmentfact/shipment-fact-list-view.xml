@@ -8,7 +8,7 @@
             <fetchPlan extends="_base"/>
             <loader id="shipmentFactsDl" readOnly="true">
                 <query>
-                    <![CDATA[select e from ShipmentFact e order by e.shipmentDate desc]]>
+                    <![CDATA[select e from ShipmentFact e order by e.shipmentDate asc]]>
                 </query>
             </loader>
         </collection>
