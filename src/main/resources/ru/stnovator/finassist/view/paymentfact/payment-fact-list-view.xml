@@ -5,7 +5,12 @@
     <data>
         <collection id="paymentFactsDc"
                     class="ru.stnovator.finassist.entity.PaymentFact">
-            <fetchPlan extends="_base"/>
+            <fetchPlan extends="_base">
+                <property name="project" fetchPlan="_base"/>
+                <property name="contract" fetchPlan="_base">
+                    <property name="customer" fetchPlan="_base"/>
+                </property>
+            </fetchPlan>
             <loader id="paymentFactsDl" readOnly="true">
                 <query>
                     <![CDATA[select e from PaymentFact e order by e.paymentDate asc]]>
@@ -48,6 +53,7 @@
             <columns resizable="true">
                 <column property="paymentDate"/>
                 <column property="amount"/>
+                <column property="contract.customer"/>
                 <column property="contract"/>
                 <column property="project"/>
             </columns>

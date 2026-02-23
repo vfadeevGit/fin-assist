@@ -5,8 +5,18 @@
     <data>
         <instance id="shipmentScheduleDc"
                   class="ru.stnovator.finassist.entity.ShipmentSchedule">
-            <fetchPlan extends="_base"/>
+            <fetchPlan extends="_base">
+                <property fetchPlan="_base" name="project">
+                    <property fetchPlan="_base" name="contract">
+                        <property fetchPlan="_base" name="customer"/>
+                    </property>
+                </property>
+                <property fetchPlan="_base" name="items">
+                    <property name="schedule" fetchPlan="_base"/>
+                </property>
+            </fetchPlan>
             <loader/>
+            <collection id="shipmentScheduleItemsDc" property="items"/>
         </instance>
     </data>
     <actions>
@@ -18,8 +28,62 @@
     </facets>
     <layout>
         <formLayout id="form" dataContainer="shipmentScheduleDc">
-            <entityPicker id="projectField" property="project"/>
+            <entityPicker id="projectField"
+                          property="project"
+                          label="msg://ru.stnovator.finassist.view.shipmentschedule/ShipmentScheduleDetailView.project">
+                <actions>
+                    <action id="openAction" type="entity_open"/>
+                    <action id="lookupAction" type="entity_lookup"/>
+                    <action id="clearAction" type="value_clear"/>
+                </actions>
+            </entityPicker>
+            <entityPicker id="contractField"
+                          property="project.contract"
+                          label="msg://ru.stnovator.finassist.view.shipmentschedule/ShipmentScheduleDetailView.contract"
+                          readOnly="true"/>
+            <entityPicker id="customerField"
+                          property="project.contract.customer"
+                          label="msg://ru.stnovator.finassist.view.shipmentschedule/ShipmentScheduleDetailView.customer"
+                          readOnly="true"/>
+            <dateTimePicker id="createdDateField"
+                            property="createdDate"
+                            label="msg://ru.stnovator.finassist.view.shipmentschedule/ShipmentScheduleDetailView.createdDate"
+                            readOnly="true"/>
+            <dateTimePicker id="lastModifiedDateField"
+                            property="lastModifiedDate"
+                            label="msg://ru.stnovator.finassist.view.shipmentschedule/ShipmentScheduleDetailView.lastModifiedDate"
+                            readOnly="true"/>
         </formLayout>
+        <h4 text="msg://ru.stnovator.finassist.view.shipmentschedule/ShipmentScheduleDetailView.items"/>
+        <hbox id="itemsButtonsPanel" classNames="buttons-panel">
+            <button id="createItemBtn" action="shipmentScheduleItemsDataGrid.create"/>
+            <button id="editItemBtn" action="shipmentScheduleItemsDataGrid.edit"/>
+            <button id="removeItemBtn" action="shipmentScheduleItemsDataGrid.remove"/>
+        </hbox>
+        <dataGrid id="shipmentScheduleItemsDataGrid"
+                  dataContainer="shipmentScheduleItemsDc"
+                  width="100%"
+                  minHeight="16em">
+            <actions>
+                <action id="create" type="list_create">
+                    <properties>
+                        <property name="openMode" value="DIALOG"/>
+                        <property name="viewId" value="ShipmentScheduleItem.detail"/>
+                    </properties>
+                </action>
+                <action id="edit" type="list_edit">
+                    <properties>
+                        <property name="openMode" value="DIALOG"/>
+                        <property name="viewId" value="ShipmentScheduleItem.detail"/>
+                    </properties>
+                </action>
+                <action id="remove" type="list_remove"/>
+            </actions>
+            <columns>
+                <column property="itemDate" header="msg://columnPlannedDate.header"/>
+                <column property="amount" header="msg://columnPlannedAmount.header"/>
+            </columns>
+        </dataGrid>
         <hbox id="detailActions">
             <button id="saveAndCloseBtn" action="saveAction"/>
             <button id="closeBtn" action="closeAction"/>

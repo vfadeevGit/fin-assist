@@ -76,12 +76,12 @@ public class Project {
 
     @OnDelete(DeletePolicy.CASCADE)
     @Composition
-    @OneToOne(mappedBy = "project")
+    @OneToOne(mappedBy = "project", fetch = FetchType.LAZY)
     private ShipmentSchedule shipmentSchedule;
 
     @OnDelete(DeletePolicy.CASCADE)
     @Composition
-    @OneToOne(mappedBy = "project")
+    @OneToOne(mappedBy = "project", fetch = FetchType.LAZY)
     private PaymentSchedule paymentSchedule;
 
     public Contract getContract() {

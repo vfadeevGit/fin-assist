@@ -52,17 +52,17 @@
             </actions>
             <columns resizable="true">
                 <column property="project.contract.customer"
-                        header="msg://ru.stnovator.finassist.view.paymentschedule/PaymentScheduleListView.customer"/>
+                        header="msg://PaymentScheduleListView.customer"/>
                 <column property="project.contract"
-                        header="msg://ru.stnovator.finassist.view.paymentschedule/PaymentScheduleListView.contract"/>
+                        header="msg://PaymentScheduleListView.contract"/>
                 <column property="project"
-                        header="msg://ru.stnovator.finassist.view.paymentschedule/PaymentScheduleListView.project"/>
+                        header="msg://PaymentScheduleListView.project"/>
                 <column property="project.lineOfBusiness"
                         header="msg://PaymentScheduleListView.LineOfBusiness"/>
                 <column property="createdDate"
-                        header="msg://ru.stnovator.finassist.view.paymentschedule/PaymentScheduleListView.createdDate"/>
+                        header="msg://PaymentScheduleListView.createdDate"/>
                 <column property="lastModifiedDate"
-                        header="msg://ru.stnovator.finassist.view.paymentschedule/PaymentScheduleListView.lastModifiedDate"/>
+                        header="msg://PaymentScheduleListView.lastModifiedDate"/>
             </columns>
         </dataGrid>
         <hbox id="lookupActions" visible="false">

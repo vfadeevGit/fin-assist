@@ -5,7 +5,11 @@
     <data>
         <collection id="shipmentFactsDc"
                     class="ru.stnovator.finassist.entity.ShipmentFact">
-            <fetchPlan extends="_base"/>
+            <fetchPlan extends="_base">
+                <property name="contract" fetchPlan="_base">
+                    <property name="customer" fetchPlan="_base"/>
+                </property>
+            </fetchPlan>
             <loader id="shipmentFactsDl" readOnly="true">
                 <query>
                     <![CDATA[select e from ShipmentFact e order by e.shipmentDate asc]]>
@@ -48,6 +52,7 @@
             <columns resizable="true">
                 <column property="shipmentDate"/>
                 <column property="amount"/>
+                <column property="contract.customer"/>
                 <column property="contract"/>
                 <column property="project"/>
             </columns>

@@ -18,7 +18,6 @@
     </facets>
     <layout>
         <formLayout id="form" dataContainer="shipmentScheduleItemDc">
-            <entityPicker id="scheduleField" property="schedule"/>
             <datePicker id="itemDateField" property="itemDate"/>
             <textField id="amountField" property="amount"/>
         </formLayout>

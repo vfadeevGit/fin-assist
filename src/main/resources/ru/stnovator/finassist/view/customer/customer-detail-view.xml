@@ -19,6 +19,8 @@
     <layout>
         <formLayout id="form" dataContainer="customerDc">
             <textField id="nameField" property="name"/>
+            <textField id="innField" property="inn"/>
+            <textField id="kppField" property="kpp"/>
         </formLayout>
         <hbox id="detailActions">
             <button id="saveAndCloseBtn" action="saveAction"/>

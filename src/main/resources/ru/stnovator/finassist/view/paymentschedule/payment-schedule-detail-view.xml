@@ -28,7 +28,7 @@
         <formLayout id="form" dataContainer="paymentScheduleDc">
             <entityPicker id="projectField"
                           property="project"
-                          label="msg://ru.stnovator.finassist.view.paymentschedule/PaymentScheduleDetailView.project"
+                          label="msg://PaymentScheduleDetailView.project"
             >
                 <actions>
                     <action id="openAction" type="entity_open"/>
@@ -38,19 +38,19 @@
             </entityPicker>
             <entityPicker id="contractField"
                           property="project.contract"
-                          label="msg://ru.stnovator.finassist.view.paymentschedule/PaymentScheduleDetailView.contract"
+                          label="msg://PaymentScheduleDetailView.contract"
                           readOnly="true"/>
             <entityPicker id="customerField"
                           property="project.contract.customer"
-                          label="msg://ru.stnovator.finassist.view.paymentschedule/PaymentScheduleDetailView.customer"
+                          label="msg://PaymentScheduleDetailView.customer"
                           readOnly="true"/>
             <dateTimePicker id="createdDateField"
                             property="createdDate"
-                            label="msg://ru.stnovator.finassist.view.paymentschedule/PaymentScheduleDetailView.createdDate"
+                            label="msg://PaymentScheduleDetailView.createdDate"
                             readOnly="true"/>
             <dateTimePicker id="lastModifiedDateField"
                             property="lastModifiedDate"
-                            label="msg://ru.stnovator.finassist.view.paymentschedule/PaymentScheduleDetailView.lastModifiedDate"
+                            label="msg://PaymentScheduleDetailView.lastModifiedDate"
                             readOnly="true"/>
         </formLayout>
         <h4 text="msg://ru.stnovator.finassist.view.paymentschedule/PaymentScheduleDetailView.items"/>
