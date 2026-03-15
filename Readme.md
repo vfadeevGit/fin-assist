@@ -138,32 +138,6 @@ Initial supported algorithm:
     - payment date = shipment date + N days
     - payment amount = shipment amount
 
----
-
-## Actual Data
-
-### ShipmentFact
-Represents an actual performed shipment (construction work execution).
-
-Attributes:
-- contract
-- project
-- shipment date
-- actual amount in currency
-
----
-
-### PaymentFact
-Represents an actual received payment.
-
-Attributes:
-- contract
-- project
-- payment date
-- actual amount in currency
-
----
-
 ## Contract Changes
 
 ### Addendum
@@ -257,4 +231,3 @@ FinAssist provides financial directors with:
 - reliable financial planning across projects and contracts.
 
 The system must be extensible for future algorithms, workflows, and integrations.
-

@@ -15,12 +15,6 @@
         <item view="PaymentSchedule.list" title="msg://ru.stnovator.finassist.view.paymentschedule/PaymentScheduleListView.title"/>
         <item view="ShipmentSchedule.list" title="msg://ru.stnovator.finassist.view.shipmentschedule/ShipmentScheduleListView.title"/>
     </menu>
-    <menu opened="true" id="facts"
-          description="msg://ru.stnovator.finassist/menu_config.facts.description"
-          title="msg://ru.stnovator.finassist/menu_config.facts.title">
-        <item view="PaymentFact.list" title="msg://ru.stnovator.finassist.view.paymentfact/PaymentFactListView.title"/>
-        <item view="ShipmentFact.list" title="msg://ru.stnovator.finassist.view.shipmentfact/ShipmentFactListView.title"/>
-    </menu>
     <menu opened="true" id="corrections" description="msg://ru.stnovator.finassist/menu_config.corrections.description"
           title="msg://ru.stnovator.finassist/menu_config.corrections.title">
         <item view="PaymentScheduleCorrection.list"

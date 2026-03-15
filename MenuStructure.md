@@ -8,8 +8,5 @@
 - Планы отгрузок (ShipmentSchedule)
 Корректировки отгрузок и оплат
 - Корректировки планов оплат (PaymentScheduleCorrection)
-Фактические оплаты и отгрузки (ShipmentScheduleCorrection)
-- Оплаты (PaymentFact)
-- Отгрузки (ShipmentFact)
 Справочники
 - Пользователи (User)
