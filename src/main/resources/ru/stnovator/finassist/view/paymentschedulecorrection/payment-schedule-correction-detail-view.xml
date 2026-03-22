@@ -8,23 +8,27 @@
             <fetchPlan>
                 <property name="createdDate"/>
                 <property name="lastModifiedDate"/>
-                <property name="addendum">
-                    <property name="contract">
-                        <property name="customer"/>
-                    </property>
+                <property name="addendum" fetchPlan="_base">
+                    <property name="contract" fetchPlan="_base"/>
                 </property>
-                <property name="project">
-                    <property name="contract">
-                        <property name="customer"/>
-                    </property>
+                <property name="project" fetchPlan="_base">
+                    <property name="contract" fetchPlan="_base"/>
                 </property>
-                <property name="items">
-                    <property name="correction" fetchPlan="_base"/>
-                </property>
+                <property name="items" fetchPlan="_base"/>
             </fetchPlan>
             <loader/>
             <collection id="paymentScheduleCorrectionItemsDc" property="items"/>
         </instance>
+        <collection id="projectsDc" class="ru.stnovator.finassist.entity.Project">
+            <fetchPlan extends="_base">
+                <property name="contract" fetchPlan="_base"/>
+            </fetchPlan>
+            <loader id="projectsDl">
+                <query>
+                    <![CDATA[select e from Project e where e.contract = :contract order by e.name asc]]>
+                </query>
+            </loader>
+        </collection>
     </data>
     <actions>
         <action id="saveAction" type="detail_saveClose"/>
@@ -44,15 +48,10 @@
                     <action id="clearAction" type="value_clear"/>
                 </actions>
             </entityPicker>
-            <entityPicker id="projectField"
-                          property="project"
-                          label="msg://ru.stnovator.finassist.view.paymentschedulecorrection/PaymentScheduleCorrectionDetailView.project">
-                <actions>
-                    <action id="openAction_1" type="entity_open"/>
-                    <action id="lookupAction_1" type="entity_lookup"/>
-                    <action id="clearAction_1" type="value_clear"/>
-                </actions>
-            </entityPicker>
+            <entityComboBox id="projectField"
+                            property="project"
+                            itemsContainer="projectsDc"
+                            label="msg://ru.stnovator.finassist.view.paymentschedulecorrection/PaymentScheduleCorrectionDetailView.project"/>
             <entityPicker id="contractField"
                           property="project.contract"
                           label="msg://ru.stnovator.finassist.view.paymentschedulecorrection/PaymentScheduleCorrectionDetailView.contract"
@@ -70,8 +69,13 @@
                             label="msg://ru.stnovator.finassist.view.paymentschedulecorrection/PaymentScheduleCorrectionDetailView.lastModifiedDate"
                             readOnly="true"/>
         </formLayout>
-        <h4 text="msg://ru.stnovator.finassist.view.paymentschedulecorrection/PaymentScheduleCorrectionDetailView.items"/>
+        <h4 id="itemsTitle"
+            text="msg://ru.stnovator.finassist.view.paymentschedulecorrection/PaymentScheduleCorrectionDetailView.items"/>
         <hbox id="itemsButtonsPanel" classNames="buttons-panel">
+            <button id="fillItemsFromScheduleBtn"
+                    text="msg://ru.stnovator.finassist.view.paymentschedulecorrection/PaymentScheduleCorrectionDetailView.fillItemsFromSchedule"/>
+            <button id="clearItemsBtn"
+                    text="msg://ru.stnovator.finassist.view.paymentschedulecorrection/PaymentScheduleCorrectionDetailView.clearItems"/>
             <button id="createItemBtn" action="paymentScheduleCorrectionItemsDataGrid.create"/>
             <button id="editItemBtn" action="paymentScheduleCorrectionItemsDataGrid.edit"/>
             <button id="removeItemBtn" action="paymentScheduleCorrectionItemsDataGrid.remove"/>
@@ -97,9 +101,9 @@
             </actions>
             <columns>
                 <column property="itemDate"
-                        header="msg://ru.stnovator.finassist.view.paymentschedulecorrection/columnCorrectionDate.header"/>
+                        header="msg://columnCorrectionDate.header"/>
                 <column property="amount"
-                        header="msg://ru.stnovator.finassist.view.paymentschedulecorrection/columnCorrectionAmount.header"/>
+                        header="msg://columnCorrectionAmount.header"/>
             </columns>
         </dataGrid>
         <hbox id="detailActions">

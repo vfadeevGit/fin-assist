@@ -9,9 +9,11 @@
                 <property name="projects" fetchPlan="_base">
                     <property name="lineOfBusiness" fetchPlan="_base"/>
                 </property>
+                <property name="addenda" fetchPlan="_base"/>
             </fetchPlan>
             <loader/>
             <collection id="projectsDc" property="projects"/>
+            <collection id="addendaDc" property="addenda"/>
         </instance>
     </data>
     <actions>
@@ -37,33 +39,60 @@
             <textField id="paymentDaysField" property="paymentDays"/>
             <textField id="totalAmountField" property="totalAmount"/>
         </formLayout>
-        <h4 text="msg://ru.stnovator.finassist.entity/Contract.projects"/>
-        <hbox id="projectsButtonsPanel" classNames="buttons-panel">
-            <button id="createProjectBtn" action="projectsDataGrid.create"/>
-            <button id="editProjectBtn" action="projectsDataGrid.edit"/>
-            <button id="removeProjectBtn" action="projectsDataGrid.remove"/>
-        </hbox>
-        <dataGrid id="projectsDataGrid" dataContainer="projectsDc" width="100%" minHeight="16em">
-            <actions>
-                <action id="create" type="list_create">
-                    <properties>
-                        <property name="openMode" value="DIALOG"/>
-                        <property name="viewId" value="Project.detail"/>
-                    </properties>
-                </action>
-                <action id="edit" type="list_edit">
-                    <properties>
-                        <property name="openMode" value="DIALOG"/>
-                        <property name="viewId" value="Project.detail"/>
-                    </properties>
-                </action>
-                <action id="remove" type="list_remove"/>
-            </actions>
-            <columns>
-                <column property="name"/>
-                <column property="lineOfBusiness"/>
-            </columns>
-        </dataGrid>
+        <tabSheet id="contractTabs" width="100%">
+            <tab id="projectsTab"
+                 label="msg://contractDetailView.projectsTab">
+                <vbox id="projectsTabBox" width="100%" minHeight="20em">
+                    <hbox id="projectsButtonsPanel" classNames="buttons-panel">
+                        <button id="createProjectBtn" action="projectsDataGrid.create"/>
+                        <button id="editProjectBtn" action="projectsDataGrid.edit"/>
+                        <button id="removeProjectBtn" action="projectsDataGrid.remove"/>
+                    </hbox>
+                    <dataGrid id="projectsDataGrid" dataContainer="projectsDc" width="100%" minHeight="16em">
+                        <actions>
+                            <action id="create" type="list_create">
+                                <properties>
+                                    <property name="openMode" value="DIALOG"/>
+                                    <property name="viewId" value="Project.detail"/>
+                                </properties>
+                            </action>
+                            <action id="edit" type="list_edit">
+                                <properties>
+                                    <property name="openMode" value="DIALOG"/>
+                                    <property name="viewId" value="Project.detail"/>
+                                </properties>
+                            </action>
+                            <action id="remove" type="list_remove"/>
+                        </actions>
+                        <columns>
+                            <column property="name"/>
+                            <column property="lineOfBusiness"/>
+                        </columns>
+                    </dataGrid>
+                </vbox>
+            </tab>
+            <tab id="addendaTab"
+                 label="msg://contractDetailView.addendaTab">
+                <vbox id="addendaTabBox" width="100%" minHeight="20em">
+                    <hbox id="addendaButtonsPanel" classNames="buttons-panel">
+                        <button id="createAddendumBtn"
+                                text="msg:///actions.Create"/>
+                        <button id="editAddendumBtn"
+                                text="msg:///actions.Edit"/>
+                        <button id="removeAddendumBtn" action="addendaDataGrid.remove"/>
+                    </hbox>
+                    <dataGrid id="addendaDataGrid" dataContainer="addendaDc" width="100%" minHeight="16em">
+                        <actions>
+                            <action id="remove" type="list_remove"/>
+                        </actions>
+                        <columns>
+                            <column property="number"/>
+                            <column property="effectiveDate"/>
+                        </columns>
+                    </dataGrid>
+                </vbox>
+            </tab>
+        </tabSheet>
         <hbox id="detailActions">
             <button id="saveAndCloseBtn" action="saveAction"/>
             <button id="closeBtn" action="closeAction"/>

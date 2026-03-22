@@ -50,6 +50,7 @@
                 <column property="startDate"/>
                 <column property="endDate"/>
                 <column property="customer"/>
+                <column property="paymentType"/>
                 <column property="totalAmount"/>
             </columns>
         </dataGrid>

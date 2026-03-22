@@ -6,6 +6,7 @@ import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.component.tabs.Tab;
 import io.jmix.core.Sort;
+import io.jmix.core.metamodel.datatype.DatatypeFormatter;
 import io.jmix.flowui.component.tabsheet.JmixTabSheet;
 import io.jmix.flowui.component.grid.DataGrid;
 import io.jmix.flowui.model.CollectionChangeType;
@@ -73,6 +74,11 @@ public class ProjectDetailView extends StandardDetailView<Project> {
     private boolean paymentSortingInProgress;
     @ViewComponent
     private MessageBundle messageBundle;
+    private final DatatypeFormatter datatypeFormatter;
+
+    public ProjectDetailView(DatatypeFormatter datatypeFormatter) {
+        this.datatypeFormatter = datatypeFormatter;
+    }
 
     @Subscribe
     public void onBeforeShow(final BeforeShowEvent event) {
@@ -292,7 +298,7 @@ public class ProjectDetailView extends StandardDetailView<Project> {
             return;
         }
         amountColumn.setFooter(messageBundle.getMessage("projectDetailView.total")
-                + " " + totalAmount.stripTrailingZeros().toPlainString());
+                + " " + datatypeFormatter.formatBigDecimal(totalAmount));
     }
 
     private boolean resolveTabsIfNeeded() {

@@ -1,12 +1,14 @@
 package ru.stnovator.finassist.entity;
 
 import io.jmix.core.DeletePolicy;
+import io.jmix.core.MetadataTools;
 import io.jmix.core.annotation.DeletedBy;
 import io.jmix.core.annotation.DeletedDate;
 import io.jmix.core.entity.annotation.JmixGeneratedValue;
 import io.jmix.core.entity.annotation.OnDelete;
 import io.jmix.core.entity.annotation.OnDeleteInverse;
 import io.jmix.core.metamodel.annotation.Composition;
+import io.jmix.core.metamodel.annotation.DependsOnProperties;
 import io.jmix.core.metamodel.annotation.InstanceName;
 import io.jmix.core.metamodel.annotation.JmixEntity;
 import jakarta.persistence.*;
@@ -67,7 +69,6 @@ public class Addendum {
     @NotNull
     private Contract contract;
 
-    @InstanceName
     @Column(name = "NUMBER", nullable = false, length = 50)
     @NotNull
     private String number;
@@ -188,5 +189,13 @@ public class Addendum {
 
     public void setId(UUID id) {
         this.id = id;
+    }
+
+    @InstanceName
+    @DependsOnProperties({"number", "contract"})
+    public String getInstanceName(MetadataTools metadataTools) {
+        return String.format("Доп соглашение %s к контракту %s",
+                metadataTools.format(number),
+                metadataTools.format(contract));
     }
 }

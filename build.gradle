@@ -21,8 +21,6 @@ repositories {
 }
 
 dependencies {
-    implementation 'de.bytestore:swagger-ui-starter'
-
     implementation 'io.jmix.rest:jmix-rest-starter'
     implementation 'io.jmix.authserver:jmix-authserver-starter'
 

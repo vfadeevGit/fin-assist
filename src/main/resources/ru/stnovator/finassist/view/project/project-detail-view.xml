@@ -57,7 +57,7 @@
 
         <tabSheet id="projectTabs" width="100%">
             <tab id="shipmentScheduleTab"
-                 label="msg://ru.stnovator.finassist.view.project/projectDetailView.shipmentScheduleTab">
+                 label="msg://projectDetailView.shipmentScheduleTab">
                 <vbox id="shipmentScheduleBox" width="100%" minHeight="20em">
                     <hbox id="shipmentScheduleButtons" classNames="buttons-panel">
                         <button id="createShipmentScheduleBtn"

@@ -5,10 +5,15 @@
     <data>
         <collection id="addendaDc"
                     class="ru.stnovator.finassist.entity.Addendum">
-            <fetchPlan extends="_base"/>
+            <fetchPlan extends="_base">
+                <property name="contract" fetchPlan="_base">
+                    <property name="customer" fetchPlan="_base"/>
+                </property>
+            </fetchPlan>
             <loader id="addendaDl" readOnly="true">
                 <query>
-                    <![CDATA[select e from Addendum e order by e.effectiveDate desc]]>
+                    <![CDATA[select e from Addendum e
+                    order by e.effectiveDate desc]]>
                 </query>
             </loader>
         </collection>
@@ -49,6 +54,7 @@
                 <column property="number"/>
                 <column property="effectiveDate"/>
                 <column property="contract"/>
+                <column property="contract.customer"/>
             </columns>
         </dataGrid>
         <hbox id="lookupActions" visible="false">

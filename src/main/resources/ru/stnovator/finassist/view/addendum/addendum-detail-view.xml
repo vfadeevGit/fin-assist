@@ -5,8 +5,14 @@
     <data>
         <instance id="addendumDc"
                   class="ru.stnovator.finassist.entity.Addendum">
-            <fetchPlan extends="_base"/>
+            <fetchPlan extends="_base">
+                <property name="contract" fetchPlan="_base"></property>
+                <property name="shipmentScheduleCorrections" fetchPlan="_base"></property>
+                <property name="paymentScheduleCorrections" fetchPlan="_base"></property>
+            </fetchPlan>
             <loader/>
+            <collection id="shipmentScheduleCorrectionsDc" property="shipmentScheduleCorrections"/>
+            <collection id="paymentScheduleCorrectionsDc" property="paymentScheduleCorrections"/>
         </instance>
     </data>
     <actions>
@@ -14,14 +20,102 @@
         <action id="closeAction" type="detail_close"/>
     </actions>
     <facets>
+        <urlQueryParameters id="urlQueryParameters"/>
         <dataLoadCoordinator auto="true"/>
     </facets>
     <layout>
         <formLayout id="form" dataContainer="addendumDc">
-            <entityPicker id="contractField" property="contract"/>
+            <entityPicker id="contractField" property="contract">
+                <actions>
+                    <action id="lookupAction" type="entity_lookup"/>
+                    <action id="clearAction" type="entity_clear"/>
+                </actions>
+            </entityPicker>
             <textField id="numberField" property="number"/>
             <datePicker id="effectiveDateField" property="effectiveDate"/>
         </formLayout>
+        <tabSheet id="correctionsTabs" width="100%">
+            <tab id="shipmentCorrectionsTab"
+                 label="msg://ru.stnovator.finassist.view.addendum/AddendumDetailView.shipmentCorrectionsTab">
+                <vbox id="shipmentCorrectionsBox" width="100%" minHeight="20em">
+                    <hbox id="shipmentCorrectionsButtons" classNames="buttons-panel">
+                        <button id="createShipmentCorrectionBtn" action="shipmentScheduleCorrectionsDataGrid.create"/>
+                        <button id="editShipmentCorrectionBtn" action="shipmentScheduleCorrectionsDataGrid.edit"/>
+                        <button id="removeShipmentCorrectionBtn" action="shipmentScheduleCorrectionsDataGrid.remove"/>
+                    </hbox>
+                    <dataGrid id="shipmentScheduleCorrectionsDataGrid"
+                              dataContainer="shipmentScheduleCorrectionsDc"
+                              width="100%"
+                              minHeight="16em">
+                        <actions>
+                            <action id="create" type="list_create">
+                                <properties>
+                                    <property name="openMode" value="DIALOG"/>
+                                    <property name="viewId" value="ShipmentScheduleCorrection.detail"/>
+                                </properties>
+                            </action>
+                            <action id="edit" type="list_edit">
+                                <properties>
+                                    <property name="openMode" value="DIALOG"/>
+                                    <property name="viewId" value="ShipmentScheduleCorrection.detail"/>
+                                </properties>
+                            </action>
+                            <action id="remove" type="list_remove"/>
+                        </actions>
+                        <columns resizable="true">
+                            <column property="project.contract.customer"
+                                    header="msg://ru.stnovator.finassist.view.addendum/AddendumDetailView.customer"/>
+                            <column property="project"
+                                    header="msg://ru.stnovator.finassist.view.addendum/AddendumDetailView.project"/>
+                            <column property="createdDate"
+                                    header="msg://ru.stnovator.finassist.view.addendum/AddendumDetailView.createdDate"/>
+                            <column property="lastModifiedDate"
+                                    header="msg://ru.stnovator.finassist.view.addendum/AddendumDetailView.lastModifiedDate"/>
+                        </columns>
+                    </dataGrid>
+                </vbox>
+            </tab>
+            <tab id="paymentCorrectionsTab"
+                 label="msg://AddendumDetailView.paymentCorrectionsTab">
+                <vbox id="paymentCorrectionsBox" width="100%" minHeight="20em">
+                    <hbox id="paymentCorrectionsButtons" classNames="buttons-panel">
+                        <button id="createPaymentCorrectionBtn" action="paymentScheduleCorrectionsDataGrid.create"/>
+                        <button id="editPaymentCorrectionBtn" action="paymentScheduleCorrectionsDataGrid.edit"/>
+                        <button id="removePaymentCorrectionBtn" action="paymentScheduleCorrectionsDataGrid.remove"/>
+                    </hbox>
+                    <dataGrid id="paymentScheduleCorrectionsDataGrid"
+                              dataContainer="paymentScheduleCorrectionsDc"
+                              width="100%"
+                              minHeight="16em">
+                        <actions>
+                            <action id="create" type="list_create">
+                                <properties>
+                                    <property name="openMode" value="DIALOG"/>
+                                    <property name="viewId" value="PaymentScheduleCorrection.detail"/>
+                                </properties>
+                            </action>
+                            <action id="edit" type="list_edit">
+                                <properties>
+                                    <property name="openMode" value="DIALOG"/>
+                                    <property name="viewId" value="PaymentScheduleCorrection.detail"/>
+                                </properties>
+                            </action>
+                            <action id="remove" type="list_remove"/>
+                        </actions>
+                        <columns resizable="true">
+                            <column property="project.contract.customer"
+                                    header="msg://ru.stnovator.finassist.view.addendum/AddendumDetailView.customer"/>
+                            <column property="project"
+                                    header="msg://ru.stnovator.finassist.view.addendum/AddendumDetailView.project"/>
+                            <column property="createdDate"
+                                    header="msg://ru.stnovator.finassist.view.addendum/AddendumDetailView.createdDate"/>
+                            <column property="lastModifiedDate"
+                                    header="msg://ru.stnovator.finassist.view.addendum/AddendumDetailView.lastModifiedDate"/>
+                        </columns>
+                    </dataGrid>
+                </vbox>
+            </tab>
+        </tabSheet>
         <hbox id="detailActions">
             <button id="saveAndCloseBtn" action="saveAction"/>
             <button id="closeBtn" action="closeAction"/>

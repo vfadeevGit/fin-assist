@@ -8,17 +8,8 @@
             <fetchPlan>
                 <property name="createdDate"/>
                 <property name="lastModifiedDate"/>
-                <property name="addendum">
-                    <property name="contract">
-                        <property name="customer"/>
-                    </property>
-                </property>
-                <property name="project">
-                    <property name="contract">
-                        <property name="customer"/>
-                    </property>
-                    <property name="lineOfBusiness"/>
-                </property>
+                <property name="addendum" fetchPlan="_base"></property>
+                <property name="project" fetchPlan="_base"></property>
             </fetchPlan>
             <loader id="paymentScheduleCorrectionsDl" readOnly="true">
                 <query>
