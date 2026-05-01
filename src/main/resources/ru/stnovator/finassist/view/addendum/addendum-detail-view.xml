@@ -6,7 +6,9 @@
         <instance id="addendumDc"
                   class="ru.stnovator.finassist.entity.Addendum">
             <fetchPlan extends="_base">
-                <property name="contract" fetchPlan="_base"></property>
+                <property name="contract" fetchPlan="_base">
+                    <property name="customer" fetchPlan="_base"/>
+                </property>
                 <property name="shipmentScheduleCorrections" fetchPlan="_base"></property>
                 <property name="paymentScheduleCorrections" fetchPlan="_base"></property>
             </fetchPlan>
@@ -33,6 +35,11 @@
             </entityPicker>
             <textField id="numberField" property="number"/>
             <datePicker id="effectiveDateField" property="effectiveDate"/>
+            <entityPicker property="contract.customer">
+                <actions>
+                    <action id="entityLookupAction" type="entity_open"/>
+                </actions>
+            </entityPicker>
         </formLayout>
         <tabSheet id="correctionsTabs" width="100%">
             <tab id="shipmentCorrectionsTab"
@@ -63,8 +70,6 @@
                             <action id="remove" type="list_remove"/>
                         </actions>
                         <columns resizable="true">
-                            <column property="project.contract.customer"
-                                    header="msg://ru.stnovator.finassist.view.addendum/AddendumDetailView.customer"/>
                             <column property="project"
                                     header="msg://ru.stnovator.finassist.view.addendum/AddendumDetailView.project"/>
                             <column property="createdDate"
@@ -103,8 +108,6 @@
                             <action id="remove" type="list_remove"/>
                         </actions>
                         <columns resizable="true">
-                            <column property="project.contract.customer"
-                                    header="msg://ru.stnovator.finassist.view.addendum/AddendumDetailView.customer"/>
                             <column property="project"
                                     header="msg://ru.stnovator.finassist.view.addendum/AddendumDetailView.project"/>
                             <column property="createdDate"

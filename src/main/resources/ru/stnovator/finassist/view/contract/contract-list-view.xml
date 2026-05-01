@@ -33,6 +33,7 @@
             <button id="createBtn" action="contractsDataGrid.create"/>
             <button id="editBtn" action="contractsDataGrid.edit"/>
             <button id="removeBtn" action="contractsDataGrid.remove"/>
+            <button id="runReportBtn" action="contractsDataGrid.runReportAction"/>
             <simplePagination id="pagination" dataLoader="contractsDl"/>
         </hbox>
         <dataGrid id="contractsDataGrid"
@@ -44,6 +45,7 @@
                 <action id="create" type="list_create"/>
                 <action id="edit" type="list_edit"/>
                 <action id="remove" type="list_remove"/>
+                <action id="runReportAction" type="report_runReport"/>
             </actions>
             <columns resizable="true">
                 <column property="internalID"/>

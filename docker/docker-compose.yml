@@ -27,7 +27,7 @@ services:
   finassist:
     platform: linux/amd64
     container_name: finassist
-    image: finassist:latest
+    image: fin-assist:latest
     ports:
       - "8080:8080"
     environment:
