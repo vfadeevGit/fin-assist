@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                      http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd"
+        objectQuotingStrategy="QUOTE_ONLY_RESERVED_WORDS">
+    <changeSet id="1" author="fin-assist">
+        <dropIndex indexName="idx_addendum_contract_number" tableName="addendum"/>
+    </changeSet>
+    <changeSet id="2" author="fin-assist" dbms="postgresql">
+        <createIndex indexName="IDX_ADDENDUM_CONTRACT_NUMBER" tableName="ADDENDUM" unique="true">
+            <column name="CONTRACT_ID"/>
+            <column name="NUMBER"/>
+        </createIndex>
+
+        <modifySql>
+            <append value="where DELETED_DATE is null"/>
+        </modifySql>
+    </changeSet>
+    <changeSet id="3" author="fin-assist">
+        <dropIndex indexName="idx_payment_schedule_correction_addendum_project"
+                   tableName="payment_schedule_correction"/>
+    </changeSet>
+    <changeSet id="4" author="fin-assist" dbms="postgresql">
+        <createIndex indexName="IDX_PAYMENT_SCHEDULE_CORRECTION_ADDENDUM_PROJECT"
+                     tableName="PAYMENT_SCHEDULE_CORRECTION" unique="true">
+            <column name="ADDENDUM_ID"/>
+            <column name="PROJECT_ID"/>
+        </createIndex>
+
+        <modifySql>
+            <append value="where DELETED_DATE is null"/>
+        </modifySql>
+    </changeSet>
+    <changeSet id="5" author="fin-assist">
+        <dropIndex indexName="idx_payment_schedule_project" tableName="payment_schedule"/>
+    </changeSet>
+    <changeSet id="6" author="fin-assist" dbms="postgresql">
+        <createIndex indexName="IDX_PAYMENT_SCHEDULE_PROJECT" tableName="PAYMENT_SCHEDULE" unique="true">
+            <column name="PROJECT_ID"/>
+        </createIndex>
+
+        <modifySql>
+            <append value="where DELETED_DATE is null"/>
+        </modifySql>
+    </changeSet>
+    <changeSet id="7" author="fin-assist">
+        <dropIndex indexName="idx_shipment_schedule_correction_addendum_project"
+                   tableName="shipment_schedule_correction"/>
+    </changeSet>
+    <changeSet id="8" author="fin-assist" dbms="postgresql">
+        <createIndex indexName="IDX_SHIPMENT_SCHEDULE_CORRECTION_ADDENDUM_PROJECT"
+                     tableName="SHIPMENT_SCHEDULE_CORRECTION" unique="true">
+            <column name="ADDENDUM_ID"/>
+            <column name="PROJECT_ID"/>
+        </createIndex>
+
+        <modifySql>
+            <append value="where DELETED_DATE is null"/>
+        </modifySql>
+    </changeSet>
+    <changeSet id="9" author="fin-assist">
+        <dropIndex indexName="idx_shipment_schedule_project" tableName="shipment_schedule"/>
+    </changeSet>
+    <changeSet id="10" author="fin-assist" dbms="postgresql">
+        <createIndex indexName="IDX_SHIPMENT_SCHEDULE_PROJECT" tableName="SHIPMENT_SCHEDULE" unique="true">
+            <column name="PROJECT_ID"/>
+        </createIndex>
+
+        <modifySql>
+            <append value="where DELETED_DATE is null"/>
+        </modifySql>
+    </changeSet>
+</databaseChangeLog>

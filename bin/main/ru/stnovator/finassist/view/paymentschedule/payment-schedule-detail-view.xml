@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<view xmlns="http://jmix.io/schema/flowui/view"
+      title="msg://ru.stnovator.finassist.view.paymentschedule/PaymentScheduleDetailView.title"
+      focusComponent="form">
+    <data>
+        <instance id="paymentScheduleDc"
+                  class="ru.stnovator.finassist.entity.PaymentSchedule">
+            <fetchPlan extends="_base">
+                <property fetchPlan="_base" name="project">
+                    <property fetchPlan="_base" name="contract"></property>
+                </property>
+                <property fetchPlan="_base" name="items">
+                    <property name="schedule" fetchPlan="_base"/>
+                </property>
+            </fetchPlan>
+            <loader/>
+            <collection id="paymentScheduleItemsDc" property="items"/>
+        </instance>
+    </data>
+    <actions>
+        <action id="saveAction" type="detail_saveClose"/>
+        <action id="closeAction" type="detail_close"/>
+    </actions>
+    <facets>
+        <dataLoadCoordinator auto="true"/>
+    </facets>
+    <layout>
+        <formLayout id="form" dataContainer="paymentScheduleDc">
+            <entityPicker id="projectField"
+                          property="project"
+                          label="msg://PaymentScheduleDetailView.project"
+            >
+                <actions>
+                    <action id="openAction" type="entity_open"/>
+                    <action id="lookupAction" type="entity_lookup"/>
+                    <action id="clearAction" type="value_clear"/>
+                </actions>
+            </entityPicker>
+            <entityPicker id="contractField"
+                          property="project.contract"
+                          label="msg://PaymentScheduleDetailView.contract"
+                          readOnly="true"/>
+            <entityPicker id="customerField"
+                          property="project.contract.customer"
+                          label="msg://PaymentScheduleDetailView.customer"
+                          readOnly="true"/>
+            <dateTimePicker id="createdDateField"
+                            property="createdDate"
+                            label="msg://PaymentScheduleDetailView.createdDate"
+                            readOnly="true"/>
+            <dateTimePicker id="lastModifiedDateField"
+                            property="lastModifiedDate"
+                            label="msg://PaymentScheduleDetailView.lastModifiedDate"
+                            readOnly="true"/>
+        </formLayout>
+        <h4 text="msg://ru.stnovator.finassist.view.paymentschedule/PaymentScheduleDetailView.items"/>
+        <hbox id="itemsButtonsPanel" classNames="buttons-panel">
+            <button id="createItemBtn" action="paymentScheduleItemsDataGrid.create"/>
+            <button id="editItemBtn" action="paymentScheduleItemsDataGrid.edit"/>
+            <button id="removeItemBtn" action="paymentScheduleItemsDataGrid.remove"/>
+        </hbox>
+        <dataGrid id="paymentScheduleItemsDataGrid"
+                  dataContainer="paymentScheduleItemsDc"
+                  width="100%"
+                  minHeight="16em">
+            <actions>
+                <action id="create" type="list_create">
+                    <properties>
+                        <property name="openMode" value="DIALOG"/>
+                        <property name="viewId" value="PaymentScheduleItem.detail"/>
+                    </properties>
+                </action>
+                <action id="edit" type="list_edit">
+                    <properties>
+                        <property name="openMode" value="DIALOG"/>
+                        <property name="viewId" value="PaymentScheduleItem.detail"/>
+                    </properties>
+                </action>
+                <action id="remove" type="list_remove"/>
+            </actions>
+            <columns>
+                <column property="itemDate" header="msg://columnPlannedDate.header"/>
+                <column property="amount" header="msg://columnPlannedAmount.header"/>
+            </columns>
+        </dataGrid>
+        <hbox id="detailActions">
+            <button id="saveAndCloseBtn" action="saveAction"/>
+            <button id="closeBtn" action="closeAction"/>
+        </hbox>
+    </layout>
+</view>

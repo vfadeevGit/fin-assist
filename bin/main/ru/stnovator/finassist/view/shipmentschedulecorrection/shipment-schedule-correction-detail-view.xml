@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<view xmlns="http://jmix.io/schema/flowui/view"
+      title="msg://ru.stnovator.finassist.view.shipmentschedulecorrection/ShipmentScheduleCorrectionDetailView.title"
+      focusComponent="form">
+    <data>
+        <instance id="shipmentScheduleCorrectionDc"
+                  class="ru.stnovator.finassist.entity.ShipmentScheduleCorrection">
+            <fetchPlan>
+                <property name="createdDate"/>
+                <property name="lastModifiedDate"/>
+                <property name="addendum" fetchPlan="_base">
+                    <property name="contract" fetchPlan="_base"/>
+                </property>
+                <property name="project" fetchPlan="_base">
+                    <property name="contract" fetchPlan="_base"/>
+                </property>
+                <property name="items" fetchPlan="_base"/>
+            </fetchPlan>
+            <loader/>
+            <collection id="shipmentScheduleCorrectionItemsDc" property="items"/>
+        </instance>
+        <collection id="projectsDc" class="ru.stnovator.finassist.entity.Project">
+            <fetchPlan extends="_base">
+                <property name="contract" fetchPlan="_base"/>
+            </fetchPlan>
+            <loader id="projectsDl">
+                <query>
+                    <![CDATA[select e from Project e where e.contract = :contract order by e.name asc]]>
+                </query>
+            </loader>
+        </collection>
+    </data>
+    <actions>
+        <action id="saveAction" type="detail_saveClose"/>
+        <action id="closeAction" type="detail_close"/>
+    </actions>
+    <facets>
+        <dataLoadCoordinator auto="true"/>
+    </facets>
+    <layout>
+        <formLayout id="form" dataContainer="shipmentScheduleCorrectionDc">
+            <entityPicker id="addendumField"
+                          property="addendum"
+                          label="msg://ru.stnovator.finassist.view.shipmentschedulecorrection/ShipmentScheduleCorrectionDetailView.addendum">
+                <actions>
+                    <action id="openAction" type="entity_open"/>
+                    <action id="lookupAction" type="entity_lookup"/>
+                    <action id="clearAction" type="value_clear"/>
+                </actions>
+            </entityPicker>
+            <entityComboBox id="projectField"
+                            property="project"
+                            itemsContainer="projectsDc"
+                            label="msg://ru.stnovator.finassist.view.shipmentschedulecorrection/ShipmentScheduleCorrectionDetailView.project"/>
+            <entityPicker id="contractField"
+                          property="project.contract"
+                          label="msg://ru.stnovator.finassist.view.shipmentschedulecorrection/ShipmentScheduleCorrectionDetailView.contract"
+                          readOnly="true"/>
+            <entityPicker id="customerField"
+                          property="project.contract.customer"
+                          label="msg://ru.stnovator.finassist.view.shipmentschedulecorrection/ShipmentScheduleCorrectionDetailView.customer"
+                          readOnly="true"/>
+            <dateTimePicker id="createdDateField"
+                            property="createdDate"
+                            label="msg://ru.stnovator.finassist.view.shipmentschedulecorrection/ShipmentScheduleCorrectionDetailView.createdDate"
+                            readOnly="true"/>
+            <dateTimePicker id="lastModifiedDateField"
+                            property="lastModifiedDate"
+                            label="msg://ru.stnovator.finassist.view.shipmentschedulecorrection/ShipmentScheduleCorrectionDetailView.lastModifiedDate"
+                            readOnly="true"/>
+        </formLayout>
+        <h4 id="itemsTitle"
+            text="msg://ru.stnovator.finassist.view.shipmentschedulecorrection/ShipmentScheduleCorrectionDetailView.items"/>
+        <hbox id="itemsButtonsPanel" classNames="buttons-panel">
+            <button id="fillItemsFromScheduleBtn"
+                    text="msg://ru.stnovator.finassist.view.shipmentschedulecorrection/ShipmentScheduleCorrectionDetailView.fillItemsFromSchedule"/>
+            <button id="clearItemsBtn"
+                    text="msg://ShipmentScheduleCorrectionDetailView.clearItems"/>
+            <button id="createItemBtn" action="shipmentScheduleCorrectionItemsDataGrid.create"/>
+            <button id="editItemBtn" action="shipmentScheduleCorrectionItemsDataGrid.edit"/>
+            <button id="removeItemBtn" action="shipmentScheduleCorrectionItemsDataGrid.remove"/>
+        </hbox>
+        <dataGrid id="shipmentScheduleCorrectionItemsDataGrid"
+                  dataContainer="shipmentScheduleCorrectionItemsDc"
+                  width="100%"
+                  minHeight="16em">
+            <actions>
+                <action id="create" type="list_create">
+                    <properties>
+                        <property name="openMode" value="DIALOG"/>
+                        <property name="viewId" value="ShipmentScheduleCorrectionItem.detail"/>
+                    </properties>
+                </action>
+                <action id="edit" type="list_edit">
+                    <properties>
+                        <property name="openMode" value="DIALOG"/>
+                        <property name="viewId" value="ShipmentScheduleCorrectionItem.detail"/>
+                    </properties>
+                </action>
+                <action id="remove" type="list_remove"/>
+            </actions>
+            <columns>
+                <column property="itemDate"
+                        header="msg://columnCorrectionDate.header"/>
+                <column property="amount"
+                        header="msg://columnCorrectionAmount.header"/>
+            </columns>
+        </dataGrid>
+        <hbox id="detailActions">
+            <button id="saveAndCloseBtn" action="saveAction"/>
+            <button id="closeBtn" action="closeAction"/>
+        </hbox>
+    </layout>
+</view>

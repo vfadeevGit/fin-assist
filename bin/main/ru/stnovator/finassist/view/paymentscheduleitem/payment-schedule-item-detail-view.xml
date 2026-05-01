@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<view xmlns="http://jmix.io/schema/flowui/view"
+      title="msg://ru.stnovator.finassist.view.paymentscheduleitem/PaymentScheduleItemDetailView.title"
+      focusComponent="form">
+    <data>
+        <instance id="paymentScheduleItemDc"
+                  class="ru.stnovator.finassist.entity.PaymentScheduleItem">
+            <fetchPlan extends="_base"/>
+            <loader/>
+        </instance>
+    </data>
+    <actions>
+        <action id="saveAction" type="detail_saveClose"/>
+        <action id="closeAction" type="detail_close"/>
+    </actions>
+    <facets>
+        <dataLoadCoordinator auto="true"/>
+    </facets>
+    <layout>
+        <formLayout id="form" dataContainer="paymentScheduleItemDc">
+            <datePicker id="itemDateField" property="itemDate" label="msg://itemDateField.label"/>
+            <textField id="amountField" property="amount" label="msg://amountField.label"/>
+        </formLayout>
+        <hbox id="detailActions">
+            <button id="saveAndCloseBtn" action="saveAction"/>
+            <button id="closeBtn" action="closeAction"/>
+        </hbox>
+    </layout>
+</view>

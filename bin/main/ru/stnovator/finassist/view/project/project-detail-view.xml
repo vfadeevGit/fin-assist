@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<view xmlns="http://jmix.io/schema/flowui/view"
+      title="msg://ru.stnovator.finassist.view.project/projectDetailView.title"
+      focusComponent="form">
+    <data>
+        <instance id="projectDc"
+                  class="ru.stnovator.finassist.entity.Project">
+            <fetchPlan extends="_base">
+                <property name="lineOfBusiness" fetchPlan="_base"/>
+                <property name="contract" fetchPlan="_base"/>
+                <property name="shipmentSchedule" fetchPlan="_base">
+                    <property name="items" fetchPlan="_base">
+                        <property name="schedule" fetchPlan="_base"/>
+                    </property>
+                </property>
+                <property name="paymentSchedule" fetchPlan="_base">
+                    <property name="items" fetchPlan="_base">
+                        <property name="schedule" fetchPlan="_base"/>
+                    </property>
+                </property>
+            </fetchPlan>
+            <loader/>
+            <instance id="shipmentScheduleDc" property="shipmentSchedule">
+                <collection id="shipmentScheduleItemsDc" property="items"/>
+            </instance>
+            <instance id="paymentScheduleDc" property="paymentSchedule">
+                <collection id="paymentScheduleItemsDc" property="items"/>
+            </instance>
+        </instance>
+    </data>
+    <actions>
+        <action id="saveAction" type="detail_saveClose"/>
+        <action id="closeAction" type="detail_close"/>
+    </actions>
+    <facets>
+        <dataLoadCoordinator auto="true"/>
+    </facets>
+    <layout>
+        <formLayout id="form" dataContainer="projectDc">
+            <textField id="nameField" property="name"/>
+            <entityPicker id="contractField" property="contract">
+                <actions>
+                    <action id="openAction_1" type="entity_open"/>
+                </actions>
+            </entityPicker>
+            <entityPicker id="lineOfBusinessField" property="lineOfBusiness">
+                <actions>
+                    <action id="openAction" type="entity_open"/>
+                    <action id="lookupAction_1" type="entity_lookup"/>
+                </actions>
+            </entityPicker>
+            <entityPicker id="customerField"
+                          property="contract.customer"
+                          label="msg://ru.stnovator.finassist.view.project/projectDetailView.customer"
+                          readOnly="true"/>
+        </formLayout>
+
+        <tabSheet id="projectTabs" width="100%">
+            <tab id="shipmentScheduleTab"
+                 label="msg://projectDetailView.shipmentScheduleTab">
+                <vbox id="shipmentScheduleBox" width="100%" minHeight="20em">
+                    <hbox id="shipmentScheduleButtons" classNames="buttons-panel">
+                        <button id="createShipmentScheduleBtn"
+                                text="msg://ru.stnovator.finassist.view.project/projectDetailView.createShipmentSchedule"/>
+                        <button id="removeShipmentScheduleBtn"
+                                text="msg://ru.stnovator.finassist.view.project/projectDetailView.removeShipmentSchedule"/>
+                        <button id="createShipmentScheduleItemBtn" action="shipmentScheduleItemsDataGrid.create"/>
+                        <button id="editShipmentScheduleItemBtn" action="shipmentScheduleItemsDataGrid.edit"/>
+                        <button id="removeShipmentScheduleItemBtn" action="shipmentScheduleItemsDataGrid.remove"/>
+                    </hbox>
+                    <dataGrid id="shipmentScheduleItemsDataGrid"
+                              dataContainer="shipmentScheduleItemsDc"
+                              width="100%"
+                              minHeight="16em">
+                        <actions>
+                            <action id="create" type="list_create">
+                                <properties>
+                                    <property name="openMode" value="DIALOG"/>
+                                    <property name="viewId" value="ShipmentScheduleItem.detail"/>
+                                </properties>
+                            </action>
+                            <action id="edit" type="list_edit">
+                                <properties>
+                                    <property name="openMode" value="DIALOG"/>
+                                    <property name="viewId" value="ShipmentScheduleItem.detail"/>
+                                </properties>
+                            </action>
+                            <action id="remove" type="list_remove"/>
+                        </actions>
+                        <columns>
+                            <column key="itemDate" property="itemDate"
+                                    header="msg://ru.stnovator.finassist.view.shipmentschedule/columnPlannedDate.header"/>
+                            <column key="amount" property="amount"
+                                    header="msg://ru.stnovator.finassist.view.shipmentschedule/columnPlannedAmount.header"/>
+                        </columns>
+                    </dataGrid>
+                </vbox>
+            </tab>
+
+            <tab id="paymentScheduleTab"
+                 label="msg://ru.stnovator.finassist.view.project/projectDetailView.paymentScheduleTab">
+                <vbox id="paymentScheduleBox" width="100%" minHeight="20em">
+                    <hbox id="paymentScheduleButtons" classNames="buttons-panel">
+                        <button id="createPaymentScheduleBtn"
+                                text="msg://ru.stnovator.finassist.view.project/projectDetailView.createPaymentSchedule"/>
+                        <button id="removePaymentScheduleBtn"
+                                text="msg://ru.stnovator.finassist.view.project/projectDetailView.removePaymentSchedule"/>
+                        <button id="createPaymentScheduleItemBtn" action="paymentScheduleItemsDataGrid.create"/>
+                        <button id="editPaymentScheduleItemBtn" action="paymentScheduleItemsDataGrid.edit"/>
+                        <button id="removePaymentScheduleItemBtn" action="paymentScheduleItemsDataGrid.remove"/>
+                    </hbox>
+                    <dataGrid id="paymentScheduleItemsDataGrid"
+                              dataContainer="paymentScheduleItemsDc"
+                              width="100%"
+                              minHeight="16em">
+                        <actions>
+                            <action id="create" type="list_create">
+                                <properties>
+                                    <property name="openMode" value="DIALOG"/>
+                                    <property name="viewId" value="PaymentScheduleItem.detail"/>
+                                </properties>
+                            </action>
+                            <action id="edit" type="list_edit">
+                                <properties>
+                                    <property name="openMode" value="DIALOG"/>
+                                    <property name="viewId" value="PaymentScheduleItem.detail"/>
+                                </properties>
+                            </action>
+                            <action id="remove" type="list_remove"/>
+                        </actions>
+                        <columns>
+                            <column key="itemDate" property="itemDate"
+                                    header="msg://ru.stnovator.finassist.view.paymentschedule/columnPlannedDate.header"/>
+                            <column key="amount" property="amount"
+                                    header="msg://ru.stnovator.finassist.view.paymentschedule/columnPlannedAmount.header"/>
+                        </columns>
+                    </dataGrid>
+                </vbox>
+            </tab>
+        </tabSheet>
+
+        <hbox id="detailActions">
+            <button id="saveAndCloseBtn" action="saveAction"/>
+            <button id="closeBtn" action="closeAction"/>
+        </hbox>
+    </layout>
+</view>

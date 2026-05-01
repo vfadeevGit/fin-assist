@@ -1,0 +1,4 @@
+interface:
+  display_name: "Jmix Reports Scaffolding"
+  short_description: "Build Jmix reports and report wiring."
+  default_prompt: "Use $jmix-reports-project-scaffolding to add or modify report generation in this Jmix project."

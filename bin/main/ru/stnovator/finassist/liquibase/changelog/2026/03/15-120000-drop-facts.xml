@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                      http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="1" author="fin-assist">
+        <dropForeignKeyConstraint baseTableName="PAYMENT_FACT"
+                                  constraintName="FK_PAYMENT_FACT_ON_CONTRACT"/>
+        <dropForeignKeyConstraint baseTableName="PAYMENT_FACT"
+                                  constraintName="FK_PAYMENT_FACT_ON_PROJECT"/>
+        <dropTable tableName="PAYMENT_FACT"/>
+    </changeSet>
+
+    <changeSet id="2" author="fin-assist">
+        <dropForeignKeyConstraint baseTableName="SHIPMENT_FACT"
+                                  constraintName="FK_SHIPMENT_FACT_ON_CONTRACT"/>
+        <dropForeignKeyConstraint baseTableName="SHIPMENT_FACT"
+                                  constraintName="FK_SHIPMENT_FACT_ON_PROJECT"/>
+        <dropTable tableName="SHIPMENT_FACT"/>
+    </changeSet>
+</databaseChangeLog>
