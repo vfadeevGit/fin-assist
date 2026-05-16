@@ -5,4 +5,5 @@
 4. UX: When working with the Addendum list view think of making a dropdown with all the Projects to the current Addendum
 5. UX: When working with the Customer list view think of making a dropdown with all the Contracts to the current Customer
 6. UX: In the Contract detail view Addendum tab with addendum details add the coulumn with the list of projects listed in the Addendum
-7. 
+7. Report 1: The shipment planned and payment planned dates should be converted to months and placed into columns, while Planned Shipment and Planned Payment would be in rows
+8. Report 2: The list of contracts groupped by customers with nested addendums and projects with details
