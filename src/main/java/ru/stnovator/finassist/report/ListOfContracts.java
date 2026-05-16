@@ -3,7 +3,15 @@ package ru.stnovator.finassist.report;
 import io.jmix.core.DataManager;
 import io.jmix.core.Messages;
 import io.jmix.core.MetadataTools;
-import io.jmix.reports.annotation.*;
+import io.jmix.reports.annotation.AvailableForRoles;
+import io.jmix.reports.annotation.AvailableInViews;
+import io.jmix.reports.annotation.BandDef;
+import io.jmix.reports.annotation.DataSetDef;
+import io.jmix.reports.annotation.DataSetDelegate;
+import io.jmix.reports.annotation.EntityParameterDef;
+import io.jmix.reports.annotation.InputParameterDef;
+import io.jmix.reports.annotation.ReportDef;
+import io.jmix.reports.annotation.TemplateDef;
 import io.jmix.reports.entity.DataSetType;
 import io.jmix.reports.entity.ParameterType;
 import io.jmix.reports.entity.ReportOutputType;
@@ -73,9 +81,12 @@ import java.util.UUID;
         entity = @EntityParameterDef(entityClass = Project.class)
 )
 @InputParameterDef(
-        alias = "includeAddendum",
-        name = "msg://ru.stnovator.finassist.report.listOfContracts/includeAddendum",
-        type = ParameterType.BOOLEAN
+        alias = "contractListMode",
+        name = "msg://ru.stnovator.finassist.report.listOfContracts/contractListMode",
+        type = ParameterType.ENUMERATION,
+        enumerationClass = ContractListMode.class,
+        defaultValue = "BASE",
+        required = true
 )
 @BandDef(
         name = "Root",
@@ -148,6 +159,9 @@ import java.util.UUID;
 public class ListOfContracts {
     private final ThreadLocal<Map<CashflowKey, CashflowComputation>> cashflowComputations =
             ThreadLocal.withInitial(HashMap::new);
+    private final ThreadLocal<Map<ProjectSourceKey, ProjectSourceDecision>> projectSourceDecisions =
+            ThreadLocal.withInitial(HashMap::new);
+
     private final DataManager dataManager;
     private final MetadataTools metadataTools;
     private final Messages messages;
@@ -160,11 +174,7 @@ public class ListOfContracts {
 
     @DataSetDelegate(name = "header")
     public ReportDataLoader headerDataLoader() {
-        return (reportQuery, parentBand, params) -> {
-            Map<String, Object> map = new HashMap<>();
-            map.put("reportDate", params.get("reportDate"));
-            return List.of(map);
-        };
+        return (reportQuery, parentBand, params) -> List.of(Map.of("reportDate", params.get("reportDate")));
     }
 
     @DataSetDelegate(name = "customers")
@@ -202,14 +212,7 @@ public class ListOfContracts {
                             order by c.customer.name
                             """)
                     .list();
-            return customers.stream()
-                    .map(customer -> {
-                        Map<String, Object> map = new HashMap<>();
-                        map.put("customerId", customer.getId());
-                        map.put("customerName", customer.getName());
-                        return map;
-                    })
-                    .toList();
+            return customers.stream().map(this::createCustomerRow).toList();
         };
     }
 
@@ -245,9 +248,7 @@ public class ListOfContracts {
                     .parameter("customerId", customerId)
                     .list();
 
-            return contracts.stream()
-                    .map(contract -> createContractRow(contract, params))
-                    .toList();
+            return contracts.stream().map(contract -> createContractRow(contract, params)).toList();
         };
     }
 
@@ -256,13 +257,15 @@ public class ListOfContracts {
         return (reportQuery, parentBand, params) -> {
             Project selectedProject = getEntityParameter(params, "project", Project.class);
             UUID contractId = (UUID) parentBand.getData().get("contractId");
+            UUID selectedAddendumId = (UUID) parentBand.getData().get("selectedAddendumId");
+            ContractListMode mode = getRequiredContractListMode(params);
 
             if (selectedProject != null) {
                 Project project = loadProjectForFiltering(selectedProject.getId());
                 if (project == null || !project.getContract().getId().equals(contractId)) {
                     return List.of();
                 }
-                return List.of(createProjectRow(project, (UUID) parentBand.getData().get("activeAddendumId")));
+                return List.of(createProjectRow(project, selectedAddendumId, mode));
             }
 
             List<Project> projects = dataManager.load(Project.class)
@@ -276,7 +279,7 @@ public class ListOfContracts {
                     .list();
 
             return projects.stream()
-                    .map(project -> createProjectRow(project, (UUID) parentBand.getData().get("activeAddendumId")))
+                    .map(project -> createProjectRow(project, selectedAddendumId, mode))
                     .toList();
         };
     }
@@ -285,9 +288,9 @@ public class ListOfContracts {
     public ReportDataLoader projectCashflowRecordsDataLoader() {
         return (reportQuery, parentBand, params) -> {
             UUID projectId = (UUID) parentBand.getData().get("projectId");
-            UUID addendumId = (UUID) parentBand.getData().get("activeAddendumId");
-            CashflowKey key = new CashflowKey(projectId, addendumId);
-            CashflowComputation computation = computeCashflow(projectId, addendumId);
+            UUID activeAddendumId = (UUID) parentBand.getData().get("activeAddendumId");
+            CashflowKey key = new CashflowKey(projectId, activeAddendumId);
+            CashflowComputation computation = computeCashflow(projectId, activeAddendumId);
             cashflowComputations.get().put(key, computation);
             return computation.rows();
         };
@@ -297,10 +300,10 @@ public class ListOfContracts {
     public ReportDataLoader projectCashflowTotalsDataLoader() {
         return (reportQuery, parentBand, params) -> {
             UUID projectId = (UUID) parentBand.getData().get("projectId");
-            UUID addendumId = (UUID) parentBand.getData().get("activeAddendumId");
-            CashflowKey key = new CashflowKey(projectId, addendumId);
+            UUID activeAddendumId = (UUID) parentBand.getData().get("activeAddendumId");
+            CashflowKey key = new CashflowKey(projectId, activeAddendumId);
             CashflowComputation computation = cashflowComputations.get()
-                    .computeIfAbsent(key, ignored -> computeCashflow(projectId, addendumId));
+                    .computeIfAbsent(key, ignored -> computeCashflow(projectId, activeAddendumId));
 
             Map<String, Object> map = new HashMap<>();
             map.put("shipmentTotal", computation.shipmentTotal());
@@ -311,14 +314,17 @@ public class ListOfContracts {
         };
     }
 
-    private Map<String, Object> createProjectRow(Project project, UUID activeAddendumId) {
+    private Map<String, Object> createProjectRow(Project project, UUID selectedAddendumId, ContractListMode mode) {
+        ProjectSourceDecision decision = resolveProjectSource(project.getId(), selectedAddendumId, mode);
+
         Map<String, Object> map = new HashMap<>();
         map.put("projectId", project.getId());
-        map.put("activeAddendumId", activeAddendumId);
+        map.put("selectedAddendumId", selectedAddendumId);
+        map.put("activeAddendumId", decision.activeAddendumId());
         map.put("projectName", project.getName());
-        map.put("lineOfBusiness", project.getLineOfBusiness() == null
-                ? ""
-                : metadataTools.format(project.getLineOfBusiness()));
+        map.put("lineOfBusiness", project.getLineOfBusiness() == null ? "" : metadataTools.format(project.getLineOfBusiness()));
+        map.put("cashflowSourceLabel", messages.getMessage("ru.stnovator.finassist.report.listOfContracts/cashflowSourceLabel"));
+        map.put("cashflowSource", decision.sourceMessage());
         return map;
     }
 
@@ -330,7 +336,7 @@ public class ListOfContracts {
     }
 
     private Map<String, Object> createContractRow(Contract contract, Map<String, Object> params) {
-        Addendum activeAddendum = resolveActiveAddendum(contract, params);
+        Addendum selectedAddendum = resolveSelectedAddendum(contract, params);
 
         Map<String, Object> map = new HashMap<>();
         map.put("contractId", contract.getId());
@@ -339,15 +345,15 @@ public class ListOfContracts {
         map.put("contractEndDate", contract.getEndDate());
         map.put("paymentType", contract.getPaymentType() == null ? "" : messages.getMessage(contract.getPaymentType()));
         map.put("totalAmount", contract.getTotalAmount());
-        map.put("activeAddendumId", activeAddendum == null ? null : activeAddendum.getId());
-        map.put("addendumInfoLabel", activeAddendum == null
+        map.put("selectedAddendumId", selectedAddendum == null ? null : selectedAddendum.getId());
+        map.put("addendumInfoLabel", selectedAddendum == null
                 ? ""
                 : messages.getMessage("ru.stnovator.finassist.report.listOfContracts/addendumLabel"));
-        map.put("addendumNumber", activeAddendum == null ? "" : activeAddendum.getNumber());
-        map.put("addendumDateLabel", activeAddendum == null
+        map.put("addendumNumber", selectedAddendum == null ? "" : selectedAddendum.getNumber());
+        map.put("addendumDateLabel", selectedAddendum == null
                 ? ""
                 : messages.getMessage("ru.stnovator.finassist.report.listOfContracts/addendumDateLabel"));
-        map.put("addendumEffectiveDate", activeAddendum == null ? null : activeAddendum.getEffectiveDate());
+        map.put("addendumEffectiveDate", selectedAddendum == null ? null : selectedAddendum.getEffectiveDate());
         return map;
     }
 
@@ -393,6 +399,33 @@ public class ListOfContracts {
         return null;
     }
 
+    private ContractListMode getRequiredContractListMode(Map<String, Object> params) {
+        ContractListMode mode = getContractListMode(params);
+        if (mode == null) {
+            throw new IllegalStateException("Required contractListMode parameter is missing");
+        }
+        return mode;
+    }
+
+    private ContractListMode getContractListMode(Map<String, Object> params) {
+        Object value = params.get("contractListMode");
+        if (value instanceof ContractListMode mode) {
+            return mode;
+        }
+        if (value instanceof String text) {
+            ContractListMode mode = ContractListMode.fromId(text);
+            if (mode != null) {
+                return mode;
+            }
+            try {
+                return ContractListMode.valueOf(text);
+            } catch (IllegalArgumentException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
     private CashflowComputation computeCashflow(UUID projectId, UUID addendumId) {
         TreeMap<LocalDate, CashflowDay> days = new TreeMap<>();
         BigDecimal shipmentTotal = BigDecimal.ZERO;
@@ -422,7 +455,6 @@ public class ListOfContracts {
                 day.shipmentSum = day.shipmentSum.add(item.getAmount());
                 shipmentTotal = shipmentTotal.add(item.getAmount());
             }
-
             for (PaymentScheduleItem item : paymentItems) {
                 CashflowDay day = days.computeIfAbsent(item.getItemDate(), ignored -> new CashflowDay());
                 day.paymentSum = day.paymentSum.add(item.getAmount());
@@ -456,7 +488,6 @@ public class ListOfContracts {
                 day.shipmentSum = day.shipmentSum.add(item.getAmount());
                 shipmentTotal = shipmentTotal.add(item.getAmount());
             }
-
             for (PaymentScheduleCorrectionItem item : paymentItems) {
                 CashflowDay day = days.computeIfAbsent(item.getItemDate(), ignored -> new CashflowDay());
                 day.paymentSum = day.paymentSum.add(item.getAmount());
@@ -466,20 +497,18 @@ public class ListOfContracts {
 
         List<Map<String, Object>> rows = new ArrayList<>();
         for (Map.Entry<LocalDate, CashflowDay> entry : days.entrySet()) {
-            CashflowDay day = entry.getValue();
-
             Map<String, Object> row = new HashMap<>();
             row.put("cashflowDate", entry.getKey());
-            row.put("shipmentSum", day.shipmentSum);
-            row.put("paymentSum", day.paymentSum);
+            row.put("shipmentSum", entry.getValue().shipmentSum);
+            row.put("paymentSum", entry.getValue().paymentSum);
             rows.add(row);
         }
 
         return new CashflowComputation(rows, shipmentTotal, paymentTotal);
     }
 
-    private Addendum resolveActiveAddendum(Contract contract, Map<String, Object> params) {
-        if (!Boolean.TRUE.equals(params.get("includeAddendum"))) {
+    private Addendum resolveSelectedAddendum(Contract contract, Map<String, Object> params) {
+        if (getRequiredContractListMode(params) != ContractListMode.ACTUAL_WITH_ADDENDUMS) {
             return null;
         }
 
@@ -502,6 +531,53 @@ public class ListOfContracts {
                 .orElse(null);
     }
 
+    private ProjectSourceDecision resolveProjectSource(UUID projectId, UUID selectedAddendumId, ContractListMode mode) {
+        ProjectSourceKey key = new ProjectSourceKey(projectId, selectedAddendumId, mode);
+        return projectSourceDecisions.get().computeIfAbsent(key, ignored -> {
+            if (mode != ContractListMode.ACTUAL_WITH_ADDENDUMS || selectedAddendumId == null) {
+                return baseSourceDecision();
+            }
+
+            boolean hasShipmentCorrections = dataManager.loadValue(
+                            """
+                                    select count(s) from ShipmentScheduleCorrectionItem s
+                                    where s.correction.project.id = :projectId
+                                      and s.correction.addendum.id = :addendumId
+                                    """,
+                            Long.class)
+                    .parameter("projectId", projectId)
+                    .parameter("addendumId", selectedAddendumId)
+                    .one() > 0;
+
+            boolean hasPaymentCorrections = dataManager.loadValue(
+                            """
+                                    select count(p) from PaymentScheduleCorrectionItem p
+                                    where p.correction.project.id = :projectId
+                                      and p.correction.addendum.id = :addendumId
+                                    """,
+                            Long.class)
+                    .parameter("projectId", projectId)
+                    .parameter("addendumId", selectedAddendumId)
+                    .one() > 0;
+
+            if (hasShipmentCorrections && hasPaymentCorrections) {
+                return new ProjectSourceDecision(
+                        selectedAddendumId,
+                        messages.getMessage("ru.stnovator.finassist.report.listOfContracts/cashflowSourceAddendum")
+                );
+            }
+
+            return baseSourceDecision();
+        });
+    }
+
+    private ProjectSourceDecision baseSourceDecision() {
+        return new ProjectSourceDecision(
+                null,
+                messages.getMessage("ru.stnovator.finassist.report.listOfContracts/cashflowSourceBase")
+        );
+    }
+
     private LocalDate getReportDate(Map<String, Object> params) {
         Object value = params.get("reportDate");
         if (value instanceof LocalDate localDate) {
@@ -521,6 +597,12 @@ public class ListOfContracts {
     }
 
     private record CashflowKey(UUID projectId, UUID addendumId) {
+    }
+
+    private record ProjectSourceKey(UUID projectId, UUID selectedAddendumId, ContractListMode mode) {
+    }
+
+    private record ProjectSourceDecision(UUID activeAddendumId, String sourceMessage) {
     }
 
     private record CashflowComputation(
