@@ -30,4 +30,8 @@ pnpmfile.js
 vite.generated.ts
 webpack.generated.js
 
+# Specifications and temprorary files
+.spec
+tmp/
+
 .DS_Store
