@@ -1,0 +1,30 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: finassist_db
+      POSTGRES_USER: finassist
+      POSTGRES_PASSWORD: finassist
+    ports:
+      - "5434:5432"
+
+  finassist:
+    image: fin-assist:0.0.3-SNAPSHOT-prod
+    depends_on:
+      - postgres
+    environment:
+      DB_VENDOR: postgresql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: finassist_db
+      DB_USER: finassist
+      DB_PASSWORD: finassist
+      SPRING_PROFILES_ACTIVE: prod
+      JAVA_TOOL_OPTIONS: -Xmx1024m
+    ports:
+      - "8080:8080"
+    volumes:
+      - smoke-storage:/storage
+
+volumes:
+  smoke-storage: {}

@@ -1,48 +1,73 @@
 name: finassist-project
+
 services:
   postgres:
-    container_name: postgres
-    image: postgres:latest
-    ports:
-      - "5434:5432"
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     volumes:
       - postgres:/var/lib/postgresql/data
-      - storage:/storage
-    environment:
-      - POSTGRES_USER=finassist
-      - POSTGRES_PASSWORD=finassist
-      - POSTGRES_DB=finassist_db
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: pgadmin
-    ports:
-      - "8888:80"
-    environment:
-      PGADMIN_DEFAULT_EMAIL: v.fadeev@haulmont.com
-      PGADMIN_DEFAULT_PASSWORD: 1234
-    volumes:
-      - pgadmin:/var/lib/pgadmin
-    depends_on:
-      - postgres
+
   finassist:
-    platform: linux/amd64
-    container_name: finassist
-    image: fin-assist:latest
-    ports:
-      - "8080:8080"
-    environment:
-      - DB_VENDOR=postgresql
-      - DB_HOST=postgres
-      - DB_USER=finassist
-      - DB_PASSWORD=finassist
-      - DB_PORT=5432
-      - DB_NAME=finassist_db
-      - SPRING_PROFILES_ACTIVE=prod
-      - JAVA_TOOL_OPTIONS=-Xmx1548m -XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90 -XX:MinHeapFreeRatio=20 -XX:MaxHeapFreeRatio=40
-      - BPL_JVM_THREAD_COUNT=100
+    image: ${APP_IMAGE}:${APP_TAG}
+    restart: unless-stopped
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_VENDOR: postgresql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      SPRING_PROFILES_ACTIVE: prod
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS}
+    volumes:
+      - storage:/storage
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - finassist
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    command: >-
+      /bin/sh -c "while :; do sleep 6h & wait $${!}; nginx -s reload; done &
+      nginx -g 'daemon off;'"
+    volumes:
+      - ./nginx/templates/finassist.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - letsencrypt:/etc/letsencrypt:ro
+      - certbot-www:/var/www/certbot:ro
+
+  certbot:
+    image: certbot/certbot:latest
+    restart: unless-stopped
+    depends_on:
+      - nginx
+    command: >-
+      /bin/sh -c "trap exit TERM; while :; do
+      certbot renew --webroot -w /var/www/certbot --quiet;
+      sleep 12h & wait $${!};
+      done"
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+
 volumes:
   postgres: {}
   storage: {}
-  pgadmin: {}
+  letsencrypt: {}
+  certbot-www: {}
