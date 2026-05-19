@@ -30,8 +30,10 @@ This setup is intended for a plain VPS deployment where:
 1. Copy `docker/.env.example` to `docker/.env`.
 2. Set `DOMAIN` to the production hostname.
 3. Set `LETSENCRYPT_EMAIL` to the email for certificate registration.
-4. Set `APP_IMAGE` and `APP_TAG` to the Docker Hub image and tag that should be deployed.
+4. Set `APP_IMAGE` and `APP_TAG` to the Docker Hub image and tag that should be deployed. The current default is `vfadeevdocker/fin-assist:0.0.3-SNAPSHOT-prod`.
 5. Set a strong `POSTGRES_PASSWORD`.
+6. Keep quotes around values that contain spaces, especially `JAVA_TOOL_OPTIONS`.
+7. Keep the application image on `linux/amd64`, because the current VPS target runs on AMD64.
 
 ## Initial certificate issuance
 
@@ -71,10 +73,23 @@ docker compose --env-file docker/.env \
   up -d
 ```
 
+If you see `-XX:+UseParallelGC: command not found` after `. docker/.env`, it means a value with spaces in `docker/.env` is unquoted. The typical fix is:
+
+```bash
+JAVA_TOOL_OPTIONS="-Xmx1024m -XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90 -XX:MinHeapFreeRatio=20 -XX:MaxHeapFreeRatio=40"
+```
+
+If you do not want to source the full file at all, you can export only the values needed for certificate issuance:
+
+```bash
+export DOMAIN=your-domain.example.com
+export LETSENCRYPT_EMAIL=ops@example.com
+```
+
 ## Updating the application
 
 1. Push changes to GitHub.
-2. Wait for Docker Hub to build the new image tag.
+2. Build and push an AMD64-compatible Docker image tag to Docker Hub, or wait for Docker Hub to publish that exact tag.
 3. Update `APP_TAG` in `docker/.env` if needed.
 4. Pull and restart:
 
@@ -105,3 +120,10 @@ docker compose --env-file docker/.env -f docker/docker-compose.yml logs -f certb
 - HTTP redirects to HTTPS
 - the application can connect to PostgreSQL
 - files written by Jmix local storage appear in the `storage` volume
+
+## Current Production Image
+
+Current expected production image:
+
+- `vfadeevdocker/fin-assist:0.0.3-SNAPSHOT-prod`
+- platform: `linux/amd64`

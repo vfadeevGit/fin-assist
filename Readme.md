@@ -1,233 +1,269 @@
-# FinAssist — Contract Cash Flow Planning System
+# FinAssist
 
-## Overview
+FinAssist is a Jmix-based internal application for planning contract cash flows. The current implementation focuses on reference data, contract/project structure, base shipment and payment schedules, addenda-based schedule corrections, and XLSX reporting.
 
-**FinAssist** is an enterprise financial planning application designed for construction companies.  
-The system supports **cash flow planning and control** across customers, contracts, projects, and business lines.
+This README describes the application as it is implemented now, not the broader target vision.
 
-The primary goal of FinAssist is to provide financial directors with a **single source of truth** for:
-- planned vs actual execution of construction contracts,
-- cash inflows and outflows over time,
-- deviations, deficits, and delays.
+## Technology
 
-The system is intended to be built as a **Jmix platform-based enterprise application** with a strong domain model and extensible business logic.
+- Java 21
+- Jmix 2.8.1 / Spring Boot 3 / Vaadin Flow UI
+- PostgreSQL
+- Jmix Reports add-on
+- Gradle
 
----
+## Current Functional Scope
 
-## Business Scope
+The system currently supports:
 
-FinAssist covers the following business areas:
+- customer, contract, project, and line-of-business master data
+- contract addenda with effective dates
+- one base shipment schedule per project
+- one base payment schedule per project
+- shipment schedule corrections by addendum and project
+- payment schedule corrections by addendum and project
+- two XLSX reports available from the contract list view
 
-- Contract-based financial planning
-- Project-level execution tracking
-- Calendar-based cash flow analysis
-- Contract change management via addenda
-- Automated control of missed planned events
-- Analytical reporting by date, customer, contract, project, and line of business
-- All shipment and payment amounts are stored and processed in a single currency - Russian Rouble
+The system does not currently implement:
 
----
+- actual shipment facts
+- actual payment facts
+- automatic payment schedule generation from shipment schedule and payment delay
+- notifications about missed milestones
+- BPM or approval workflows
 
-## User Role
-
-### Financial Director
-The only required role for the MVP.
-
-Responsibilities:
-- maintaining contracts and projects;
-- defining planned shipment and payment schedules;
-- registering actual shipments and payments;
-- managing contract addenda and schedule corrections;
-- analyzing cash flow reports.
-
----
-
-## Core Domain Model
+## Domain Model
 
 ### Customer
-Represents a client (customer) with whom contracts are signed.
 
-- A Customer can have multiple Contracts.
-- A Contract belongs to exactly one Customer.
+Customer stores:
 
----
+- name
+- INN
+- KPP
+
+A customer owns multiple contracts.
 
 ### Contract
-Represents a construction contract.
 
-Attributes (high level):
-- contract number and date
+Contract stores:
+
 - customer
-- start and end dates
-- total contract amount
-- status
+- internal contract ID
+- start date
+- end date
+- payment type
+- total amount
+- payment days
 
-Relationships:
-- Contract 1 → N Projects
-- Contract 1 → N Addenda
+The payment type is represented by `ContractType` with these values:
 
----
+- `DIRECT_CONSUMER`
+- `GENERAL_CONTRACTOR`
+- `FACTORING_CONSUMER`
+
+A contract owns:
+
+- projects
+- addenda
+
+The entity also exposes a derived duration in days.
 
 ### LineOfBusiness
-Reference entity describing a business direction.
 
-Examples (not fixed):
-- General Contracting
-- Subcontracting
-- Design Works
-- Maintenance
-
-Relationships:
-- LineOfBusiness 1 → N Projects
-- Project N → 1 LineOfBusiness
-
----
+Reference entity for the project business line.
 
 ### Project
-Represents a project executed within a contract.
 
-Important rules:
-- Every Project belongs to exactly one Contract.
-- Every Project belongs to exactly one LineOfBusiness.
+Project stores:
 
-Relationships:
-- Project → Shipment Schedule
-- Project → Payment Schedule
-- Project → Shipment Facts
-- Project → Payment Facts
-- Project → Schedule Corrections (via Addenda)
+- name
+- contract
+- line of business
 
----
+Each project can own:
 
-## Planning Model (Aggregates)
-
-### ShipmentSchedule
-Represents the **planned schedule of construction works**.
-
-This is an aggregate root.
-
-- One ShipmentSchedule exists per Project.
-- The schedule contains multiple positions (date + amount).
-
-Structure:
-- ShipmentSchedule (header)
-- ShipmentScheduleItem (1 → N)
-
-ShipmentScheduleItem:
-- shipment date
-- planned shipment amount in currency
-
----
-
-### PaymentSchedule
-Represents the **planned payment schedule**.
-
-This is an aggregate root.
-
-- One PaymentSchedule exists per Project.
-- The schedule contains multiple positions (date + amount).
-
-Structure:
-- PaymentSchedule (header)
-- PaymentScheduleItem (1 → N)
-
-PaymentSchedule supports automatic calculation.
-
-Initial supported algorithm:
-- **Deferred payment**
-    - payment date = shipment date + N days
-    - payment amount = shipment amount
-
-## Contract Changes
+- one shipment schedule
+- one payment schedule
 
 ### Addendum
-Represents a contract addendum.
 
-Rules:
-- An Addendum belongs to a Contract.
-- Customer is derived from the Contract.
-- Addendum has an effective date (date of signing).
+Addendum stores:
 
----
+- contract
+- addendum number
+- effective date
+
+Each addendum can own:
+
+- shipment schedule corrections
+- payment schedule corrections
+
+### Base Schedules
+
+Base schedules are modeled as separate aggregate roots:
+
+- `ShipmentSchedule` -> many `ShipmentScheduleItem`
+- `PaymentSchedule` -> many `PaymentScheduleItem`
+
+Schedule items store:
+
+- item date
+- amount
+
+Both schedule headers are unique per project.
 
 ### Schedule Corrections
 
-Addenda introduce **schedule corrections**.
+Corrections are also modeled as separate aggregates:
 
-Important business constraints:
-- For each Addendum and each Project:
-    - at most **one shipment schedule correction**
-    - at most **one payment schedule correction**
+- `ShipmentScheduleCorrection` -> many `ShipmentScheduleCorrectionItem`
+- `PaymentScheduleCorrection` -> many `PaymentScheduleCorrectionItem`
 
-Corrections are modeled as **full replacement schedules**, effective from the addendum date.
+Each correction belongs to:
 
-#### ShipmentScheduleCorrection
-- linked to Addendum and Project
-- contains corrected shipment schedule items (date + amount in currency)
+- one addendum
+- one project
 
-#### PaymentScheduleCorrection
-- linked to Addendum and Project
-- contains corrected payment schedule items (date + amount in currency)
+There is a unique constraint per `(addendum, project)` for each correction type, so for a given addendum and project there can be at most:
 
----
+- one shipment correction
+- one payment correction
 
-## Planning Rules (MVP)
+## UI Surface
 
-When calculating planned cash flow for a given date:
+The main menu currently contains these sections:
 
-- if date < addendum effective date → use base schedule
-- if date ≥ addendum effective date and correction exists → use correction
-- if no correction exists → use base schedule
+- Contract work
+- Plans
+- Corrections
+- References
 
----
+Available list/detail views:
 
-## Functional Requirements (User Stories Summary)
+- Customers
+- Contracts
+- Projects
+- Addenda
+- Shipment schedules
+- Payment schedules
+- Shipment schedule corrections
+- Payment schedule corrections
+- Line of business
+- Users
 
-1. Financial Director defines shipment and payment schedules per project.
-2. Financial Director registers actual shipments.
-3. Financial Director registers actual payments.
-4. Financial Director creates addenda and corrects schedules.
-5. System automatically notifies stakeholders if planned shipments are missed.
-6. Financial Director generates reports with daily cash flow:
-    - planned shipments
-    - planned payments
-    - actual shipments
-    - actual payments
-    - deviations and deficits
+### Project Detail View
 
----
+The project detail view contains embedded work with both base schedules:
 
-## Reporting Requirements
+- create or remove shipment schedule
+- create or remove payment schedule
+- edit schedule items directly in the project context
+- keep schedule items sorted by date
+- show item counts in tabs
+- show total amount in grid footers
 
-Reports must support:
-- filtering by date range
-- grouping by:
-    - customer
-    - contract
-    - project
-    - line of business
-- daily calendar view
-- plan vs fact comparison
-- deviation calculation
+### Correction Detail Views
 
----
+Both correction detail views contain helper logic:
 
-## Non-Functional Requirements
+- available projects are filtered by the selected addendum's contract
+- schedule items can be copied from the current base schedule into the correction
+- copied items are deduplicated by date
+- correction items are sorted by date
+- total amount is shown in the grid footer
+- all correction items can be cleared with confirmation
 
-- Strong domain model
-- Clear aggregate boundaries
-- Extensible calculation logic
-- Auditability of plan changes
-- Enterprise-grade security model
-- Suitable for further BPM / approval workflows
+## Business Logic Implemented Today
 
----
+There is no dedicated application service layer yet. The implemented business logic is concentrated in Flow UI controllers and report beans.
 
-## Expected Outcome
+Current logic includes:
 
-FinAssist provides financial directors with:
-- transparent contract execution tracking,
-- early detection of cash flow gaps,
-- reliable financial planning across projects and contracts.
+- maintaining a strict one-schedule-per-project structure for base shipment and payment plans
+- maintaining a strict one-correction-per-addendum-per-project structure for each correction type
+- selecting projects for corrections only from the addendum's contract
+- copying base schedule items into a correction as a starting point for editing
+- choosing between base schedules and addendum corrections in reports
 
-The system must be extensible for future algorithms, workflows, and integrations.
+## Reports
+
+Two design-time reports are implemented and available from the contract list view.
+
+### Cashflow Calendar
+
+`CashflowCalendar` generates an XLSX cross-tab report with:
+
+- filters by report date, customer, contract, and project
+- monthly columns for the selected year
+- separate planned shipment and planned payment rows per project
+- totals across all visible projects
+- support for two modes:
+  - base schedules only
+  - actual plan with addenda, where the latest applicable addendum is used if both shipment and payment corrections exist for a project
+
+The report also splits amounts into:
+
+- before selected year
+- inside selected year by month
+- after selected year
+
+### List Of Contracts
+
+`ListOfContracts` generates an XLSX hierarchical report grouped by:
+
+- customer
+- contract
+- project
+
+For each project it outputs dated cash-flow rows and totals for:
+
+- shipment amounts
+- payment amounts
+
+The report supports base mode and addendum-aware mode. In addendum-aware mode it uses correction schedules only when both shipment and payment corrections exist for the selected effective addendum; otherwise it falls back to the base schedules.
+
+## Security
+
+The application includes these notable roles:
+
+- `FinanceManagerRole` for the main business UI and reports
+- `UiMinimalRole` for login and main shell access
+- `FullAccessRole`
+- `OpenclawUserRole` for API scope
+
+`FinanceManagerRole` grants CRUD access to the planning entities and access to report screens.
+
+## Current Gaps And Limits
+
+Compared with the earlier product vision, the current codebase has these important limits:
+
+- no fact registration entities or UI
+- no plan-vs-fact comparison in the data model
+- no automatic schedule recalculation service
+- no background jobs or notifications
+- no dedicated business services package yet
+- report logic is implemented directly in report beans rather than in reusable domain services
+
+## Running Locally
+
+Run the application in development mode:
+
+```bash
+./gradlew bootRun
+```
+
+The default development login is:
+
+- username: `admin`
+- password: `admin`
+
+## Deployment Notes
+
+The repository also contains:
+
+- a production-oriented `Dockerfile`
+- Docker Compose files under `docker/`
+- an HTTPS deployment guide in `docker/DEPLOY.md`
+
+For container deployment, use the Docker-specific documents rather than this README as the source of truth.
