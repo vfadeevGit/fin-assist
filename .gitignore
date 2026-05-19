@@ -1,6 +1,7 @@
 .jmix
 
 backup
+docker
 
 .gradle
 build/
