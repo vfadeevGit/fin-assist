@@ -1,1 +1,149 @@
-/* Define your styles here */
+@font-face {
+  font-family: 'Roboto';
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url('./fonts/roboto-regular-variable.woff2') format('woff2');
+}
+
+/* Light-theme brand layer. Semantic status colours remain owned by Lumo. */
+html:not([theme~='dark']) {
+  --fin-brand: #D21242;
+  --fin-brand-hover: #B51039;
+  --fin-brand-active: #970D30;
+  --fin-brand-soft: #FCE7ED;
+  --fin-surface: #FFFFFF;
+  --fin-canvas: #F7F7F8;
+  --fin-surface-muted: #EBECED;
+  --fin-text: #1A1A1A;
+  --fin-text-secondary: #404040;
+  --fin-text-muted: #666666;
+  --fin-border: #D8DADD;
+  --fin-control-border: #858A91;
+
+  --lumo-font-family: 'Roboto', Arial, sans-serif;
+  --lumo-font-size-m: 1rem;
+  --lumo-font-size-s: 0.875rem;
+  --lumo-font-size-xs: 0.875rem;
+  --lumo-line-height-m: 1.5;
+  --lumo-primary-color: var(--fin-brand);
+  --lumo-primary-text-color: var(--fin-brand);
+  --lumo-primary-contrast-color: var(--fin-surface);
+  --lumo-primary-color-10pct: var(--fin-brand-soft);
+  --lumo-primary-color-50pct: rgb(210 18 66 / 50%);
+  --lumo-base-color: var(--fin-surface);
+  --lumo-header-text-color: var(--fin-text);
+  --lumo-body-text-color: var(--fin-text);
+  --lumo-secondary-text-color: var(--fin-text-muted);
+  --lumo-border-radius-s: 0.375rem;
+  --lumo-border-radius-m: 0.375rem;
+  --lumo-border-radius-l: 0.75rem;
+  --vaadin-focus-ring-color: var(--fin-brand);
+  --vaadin-focus-ring-width: 2px;
+  --vaadin-button-border-radius: 0.5rem;
+  --vaadin-button-font-weight: 500;
+  --vaadin-button-primary-font-weight: 500;
+  --vaadin-input-field-border-radius: 0.375rem;
+  --vaadin-input-field-border-width: 1px;
+  --vaadin-input-field-border-color: var(--fin-control-border);
+  --vaadin-input-field-background: var(--fin-surface);
+  --vaadin-input-field-value-font-weight: 400;
+  --vaadin-input-field-label-color: var(--fin-text-secondary);
+  --jmix-list-menu-item-font-size: 1rem;
+  background: var(--fin-canvas);
+}
+
+html:not([theme~='dark']) body {
+  background: var(--fin-canvas);
+}
+
+html:not([theme~='dark']) :is(h1, h2, h3, h4) {
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+html:not([theme~='dark']) h1 { font-size: 1.5rem; }
+html:not([theme~='dark']) h2 { font-size: 1.25rem; }
+html:not([theme~='dark']) h3 { font-size: 1.125rem; }
+
+/* Do not override error/success/contrast variants or disabled controls. */
+html:not([theme~='dark']) vaadin-button:not(vaadin-notification-card vaadin-button):not([theme~='primary']):not([theme~='tertiary']):not([theme~='tertiary-inline']):not([theme~='error']):not([theme~='success']):not([theme~='contrast']) {
+  --vaadin-button-background: var(--fin-surface);
+  --vaadin-button-border: 1px solid var(--fin-control-border);
+}
+
+html:not([theme~='dark']) vaadin-button:not(vaadin-notification-card vaadin-button)[theme~='primary']:not([theme~='error']):not([theme~='success']):not([theme~='contrast']):not([disabled]):hover {
+  --vaadin-button-primary-background: var(--fin-brand-hover);
+}
+
+html:not([theme~='dark']) vaadin-button:not(vaadin-notification-card vaadin-button)[theme~='primary']:not([theme~='error']):not([theme~='success']):not([theme~='contrast']):not([disabled])[active] {
+  --vaadin-button-primary-background: var(--fin-brand-active);
+}
+
+html:not([theme~='dark']) :is(vaadin-text-field, vaadin-password-field, vaadin-email-field, vaadin-number-field, vaadin-integer-field, vaadin-big-decimal-field, vaadin-text-area, vaadin-combo-box, vaadin-multi-select-combo-box, vaadin-date-picker, vaadin-time-picker, vaadin-select, jmix-value-picker, jmix-entity-picker)[invalid] {
+  --vaadin-input-field-border-color: var(--lumo-error-color);
+}
+
+html:not([theme~='dark']) :is(vaadin-button, vaadin-tab, vaadin-drawer-toggle)[focus-ring],
+html:not([theme~='dark']) a:focus-visible {
+  outline: 2px solid var(--fin-brand);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--fin-surface);
+}
+
+html:not([theme~='dark']) :is(vaadin-text-field, vaadin-password-field, vaadin-email-field, vaadin-number-field, vaadin-integer-field, vaadin-big-decimal-field, vaadin-text-area, vaadin-combo-box, vaadin-multi-select-combo-box, vaadin-date-picker, vaadin-time-picker, vaadin-select, jmix-value-picker, jmix-entity-picker)[focus-ring]::part(input-field) {
+  outline: 2px solid var(--fin-brand);
+  outline-offset: 2px;
+}
+
+html:not([theme~='dark']) vaadin-grid {
+  --vaadin-grid-row-hover-background-color: var(--fin-canvas);
+  border-color: var(--fin-border);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+html:not([theme~='dark']) vaadin-grid::part(header-cell),
+html:not([theme~='dark']) vaadin-grid::part(footer-cell) {
+  background: var(--fin-surface-muted);
+  color: var(--fin-text-secondary);
+  font-weight: 500;
+}
+
+html:not([theme~='dark']) vaadin-grid::part(selected-row-cell) {
+  background: var(--fin-brand-soft);
+  color: var(--fin-text);
+}
+
+html:not([theme~='dark']) vaadin-tab[selected] {
+  font-weight: 500;
+}
+
+/* Vaadin 25 exposes overlays through the owning component's public parts. */
+html:not([theme~='dark']) :is(vaadin-dialog, vaadin-confirm-dialog)::part(overlay) {
+  border-radius: 0.75rem;
+  box-shadow: 0 8px 32px rgb(26 26 26 / 16%);
+}
+
+/* Reusable surfaces for Spec 001; only actual links/buttons are interactive. */
+html:not([theme~='dark']) :is(.fin-card, .fin-dashboard-tile) {
+  background: var(--fin-surface);
+  border: 1px solid var(--fin-border);
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+}
+
+html:not([theme~='dark']) .fin-dashboard-tile { border-radius: 1rem; }
+html:not([theme~='dark']) :is(a, button).fin-dashboard-tile:hover { border-color: var(--fin-brand); }
+html:not([theme~='dark']) .fin-count { font-size: 2rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 600px) {
+  html:not([theme~='dark']) :is(.fin-card, .fin-dashboard-tile) { padding: 1rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:not([theme~='dark']) :is(vaadin-button, vaadin-tab)::before,
+  html:not([theme~='dark']) :is(vaadin-button, vaadin-tab)::after {
+    transition: none;
+  }
+}
