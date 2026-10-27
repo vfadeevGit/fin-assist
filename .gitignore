@@ -1,7 +1,10 @@
 .jmix
 
 backup
-docker
+/docker/.env
+/docker/.env.*
+!/docker/.env.example
+__pycache__/
 
 .gradle
 build/
