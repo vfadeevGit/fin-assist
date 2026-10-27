@@ -1,11 +1,17 @@
 package ru.stnovator.finassist.view.contract;
 
+import ru.stnovator.finassist.view.support.DetailViewPresentation;
+import io.jmix.flowui.view.DialogMode;
+
 import com.vaadin.flow.component.ClickEvent;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.router.QueryParameters;
 import com.vaadin.flow.router.Route;
 import io.jmix.flowui.ViewNavigators;
 import io.jmix.flowui.component.grid.DataGrid;
+import io.jmix.flowui.component.textfield.JmixBigDecimalField;
+import io.jmix.flowui.exception.ValidationException;
+import io.jmix.flowui.view.MessageBundle;
 import io.jmix.flowui.view.EditedEntityContainer;
 import io.jmix.flowui.view.StandardDetailView;
 import io.jmix.flowui.view.Subscribe;
@@ -18,11 +24,34 @@ import ru.stnovator.finassist.entity.Contract;
 import ru.stnovator.finassist.view.addendum.AddendumDetailView;
 import ru.stnovator.finassist.view.main.MainView;
 
+@DialogMode(width = "64rem", height = "min(52rem, calc(100dvh - 6rem))", maxWidth = "calc(100vw - 2rem)", keepInViewport = true, resizable = true)
 @Route(value = "contracts/:id", layout = MainView.class)
 @ViewController("Contract.detail")
 @ViewDescriptor("contract-detail-view.xml")
 @EditedEntityContainer("contractDc")
 public class ContractDetailView extends StandardDetailView<Contract> {
+    @Autowired
+    private DetailViewPresentation detailViewPresentation;
+
+    @Subscribe
+    public void onPresentationReady(final ReadyEvent event) {
+        detailViewPresentation.initialize(this);
+    }
+
+    @ViewComponent
+    private JmixBigDecimalField paymentDaysField;
+    @ViewComponent
+    private MessageBundle messageBundle;
+
+    @Subscribe
+    public void onInit(final InitEvent event) {
+        paymentDaysField.addValidator(value -> {
+            if (value != null && value.stripTrailingZeros().scale() > 0) {
+                throw new ValidationException(messageBundle.getMessage("wholePaymentDays"));
+            }
+        });
+    }
+
     @ViewComponent
     private DataGrid<Addendum> addendaDataGrid;
 

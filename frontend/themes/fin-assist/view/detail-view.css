@@ -1,0 +1,59 @@
+/* Shared editor shell: only the body scrolls; actions remain available. */
+.detail-editor {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.detail-scroller {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+}
+.detail-content {
+  box-sizing: border-box;
+  padding: var(--lumo-space-m);
+  gap: var(--lumo-space-m);
+}
+.detail-content > * { flex-shrink: 0; min-width: 0; max-width: 100%; }
+.detail-actions {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  padding: var(--lumo-space-m);
+  gap: var(--lumo-space-s);
+  flex-wrap: wrap;
+  background: var(--lumo-base-color);
+  border-top: 1px solid var(--lumo-contrast-10pct);
+}
+.detail-actions vaadin-button { margin: 0; }
+.detail-form-compact { max-width: 48rem; }
+.detail-form-single { max-width: 36rem; }
+.detail-collection { gap: var(--lumo-space-m); }
+.detail-toolbar-groups { gap: var(--lumo-space-s); }
+.detail-toolbar {
+  gap: var(--lumo-space-s);
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+}
+.detail-toolbar vaadin-button { margin: 0; }
+.detail-editor jmix-tabsheet::part(content) { padding: var(--lumo-space-m) 0 0; }
+.detail-editor vaadin-tabsheet::part(content) { padding: var(--lumo-space-m) 0 0; }
+.detail-editor vaadin-tab { padding-left: var(--lumo-space-m); padding-right: var(--lumo-space-m); }
+.detail-grid { flex: none; max-height: 28rem; }
+.detail-grid::part(header-cell) { white-space: normal; }
+.detail-grid vaadin-grid-sorter { white-space: normal; line-height: var(--lumo-line-height-s); }
+.detail-editor h4 { margin: var(--lumo-space-s) 0 0; }
+.detail-metadata { color: var(--lumo-secondary-text-color); font-size: var(--lumo-font-size-s); }
+.detail-metadata span { overflow-wrap: anywhere; }
+.detail-empty-state { color: var(--lumo-secondary-text-color); }
+.detail-reference-field::part(helper-text),
+.detail-context-field::part(helper-text) { white-space: normal; overflow-wrap: anywhere; }
+.detail-context-field::part(input-field) { background: transparent; border: none; box-shadow: none; }
+@media (max-width: 600px) {
+  .detail-toolbar { column-gap: var(--lumo-space-xs); row-gap: var(--lumo-space-s); }
+  .detail-toolbar vaadin-button { padding-left: var(--lumo-space-s); padding-right: var(--lumo-space-s); }
+}
+
+.detail-metadata-field::part(input-field) { border: none; background: transparent; box-shadow: none; padding: 0; }
+.detail-metadata-field::part(label) { font-size: var(--lumo-font-size-xs); }

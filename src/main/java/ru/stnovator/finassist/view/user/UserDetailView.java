@@ -1,5 +1,8 @@
 package ru.stnovator.finassist.view.user;
 
+import ru.stnovator.finassist.view.support.DetailViewPresentation;
+import io.jmix.flowui.view.DialogMode;
+
 import ru.stnovator.finassist.entity.User;
 import ru.stnovator.finassist.view.main.MainView;
 import com.vaadin.flow.component.combobox.ComboBox;
@@ -15,11 +18,20 @@ import java.util.List;
 import java.util.Objects;
 import java.util.TimeZone;
 
+@DialogMode(width = "48rem", height = "min(36rem, calc(100dvh - 6rem))", maxWidth = "calc(100vw - 2rem)", keepInViewport = true, resizable = true)
 @Route(value = "users/:id", layout = MainView.class)
 @ViewController("User.detail")
 @ViewDescriptor("user-detail-view.xml")
 @EditedEntityContainer("userDc")
 public class UserDetailView extends StandardDetailView<User> {
+    @Autowired
+    private DetailViewPresentation detailViewPresentation;
+
+    @Subscribe
+    public void onPresentationReady(final ReadyEvent event) {
+        detailViewPresentation.initialize(this);
+    }
+
 
     @ViewComponent
     private TypedTextField<String> usernameField;

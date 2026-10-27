@@ -1,30 +1,35 @@
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<view xmlns="http://jmix.io/schema/flowui/view"
-      title="msg://ru.stnovator.finassist.view.customer/customerDetailView.title"
-      focusComponent="form">
+<?xml version='1.0' encoding='UTF-8'?>
+<view xmlns="http://jmix.io/schema/flowui/view" title="msg://ru.stnovator.finassist.view.customer/customerDetailView.title" focusComponent="form">
     <data>
-        <instance id="customerDc"
-                  class="ru.stnovator.finassist.entity.Customer">
-            <fetchPlan extends="_base"/>
-            <loader/>
+        <instance id="customerDc" class="ru.stnovator.finassist.entity.Customer">
+            <fetchPlan extends="_base" />
+            <loader />
         </instance>
     </data>
     <actions>
-        <action id="saveAction" type="detail_saveClose"/>
-        <action id="closeAction" type="detail_close"/>
+        <action id="saveAction" type="detail_saveClose" />
+        <action id="closeAction" type="detail_close" />
     </actions>
     <facets>
-        <dataLoadCoordinator auto="true"/>
+        <dataLoadCoordinator auto="true" />
     </facets>
-    <layout>
-        <formLayout id="form" dataContainer="customerDc">
-            <textField id="nameField" property="name"/>
-            <textField id="innField" property="inn"/>
-            <textField id="kppField" property="kpp"/>
-        </formLayout>
-        <hbox id="detailActions">
-            <button id="saveAndCloseBtn" action="saveAction"/>
-            <button id="closeBtn" action="closeAction"/>
+    <layout classNames="detail-editor" padding="false" spacing="false" height="100%">
+        <scroller id="detailScroller" width="100%" scrollBarsDirection="VERTICAL" classNames="detail-scroller">
+            <vbox id="detailContent" width="100%" padding="false" spacing="false" classNames="detail-content">
+                <formLayout id="form" dataContainer="customerDc" classNames="detail-form-compact">
+                    <responsiveSteps>
+                        <responsiveStep minWidth="0" columns="1" />
+                        <responsiveStep minWidth="40em" columns="2" />
+                    </responsiveSteps>
+                    <textField id="nameField" property="name" colspan="2" />
+                    <textField id="innField" property="inn" />
+                    <textField id="kppField" property="kpp" />
+                </formLayout>
+            </vbox>
+        </scroller>
+        <hbox id="detailActions" classNames="detail-actions" width="100%">
+            <button id="saveAndCloseBtn" action="saveAction" text="msg://ru.stnovator.finassist.view.detail/saveClose" />
+            <button id="closeBtn" action="closeAction" />
         </hbox>
     </layout>
 </view>

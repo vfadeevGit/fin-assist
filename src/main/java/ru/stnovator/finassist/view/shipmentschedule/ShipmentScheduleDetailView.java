@@ -1,5 +1,9 @@
 package ru.stnovator.finassist.view.shipmentschedule;
 
+import ru.stnovator.finassist.view.support.DetailViewPresentation;
+import io.jmix.flowui.view.DialogMode;
+import org.springframework.beans.factory.annotation.Autowired;
+
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.router.Route;
 import io.jmix.core.Sort;
@@ -22,11 +26,20 @@ import ru.stnovator.finassist.view.main.MainView;
 
 import java.math.BigDecimal;
 
+@DialogMode(width = "64rem", height = "min(52rem, calc(100dvh - 6rem))", maxWidth = "calc(100vw - 2rem)", keepInViewport = true, resizable = true)
 @Route(value = "shipment-schedules/:id", layout = MainView.class)
 @ViewController("ShipmentSchedule.detail")
 @ViewDescriptor("shipment-schedule-detail-view.xml")
 @EditedEntityContainer("shipmentScheduleDc")
 public class ShipmentScheduleDetailView extends StandardDetailView<ShipmentSchedule> {
+    @Autowired
+    private DetailViewPresentation detailViewPresentation;
+
+    @Subscribe
+    public void onPresentationReady(final ReadyEvent event) {
+        detailViewPresentation.initialize(this);
+    }
+
     @ViewComponent
     private CollectionContainer<ShipmentScheduleItem> shipmentScheduleItemsDc;
     @ViewComponent
