@@ -221,7 +221,7 @@ For each project it outputs dated cash-flow rows and totals for:
 - shipment amounts
 - payment amounts
 
-The report supports base mode and addendum-aware mode. In addendum-aware mode it uses correction schedules only when both shipment and payment corrections exist for the selected effective addendum; otherwise it falls back to the base schedules.
+The report supports base mode and addendum-aware mode. In addendum-aware mode, shipment and payment corrections from the selected effective contract addendum are applied independently. Each missing correction side falls back to its base schedule. The source label identifies mixed sources; a correction replaces its corresponding schedule rather than adding to it. Older addenda are not searched separately for each side.
 
 ## Security
 

@@ -159,8 +159,6 @@ import java.util.UUID;
 public class ListOfContracts {
     private final ThreadLocal<Map<CashflowKey, CashflowComputation>> cashflowComputations =
             ThreadLocal.withInitial(HashMap::new);
-    private final ThreadLocal<Map<ProjectSourceKey, ProjectSourceDecision>> projectSourceDecisions =
-            ThreadLocal.withInitial(HashMap::new);
 
     private final DataManager dataManager;
     private final MetadataTools metadataTools;
@@ -288,9 +286,10 @@ public class ListOfContracts {
     public ReportDataLoader projectCashflowRecordsDataLoader() {
         return (reportQuery, parentBand, params) -> {
             UUID projectId = (UUID) parentBand.getData().get("projectId");
-            UUID activeAddendumId = (UUID) parentBand.getData().get("activeAddendumId");
-            CashflowKey key = new CashflowKey(projectId, activeAddendumId);
-            CashflowComputation computation = computeCashflow(projectId, activeAddendumId);
+            UUID shipmentAddendumId = (UUID) parentBand.getData().get("shipmentAddendumId");
+            UUID paymentAddendumId = (UUID) parentBand.getData().get("paymentAddendumId");
+            CashflowKey key = new CashflowKey(projectId, shipmentAddendumId, paymentAddendumId);
+            CashflowComputation computation = computeCashflow(projectId, shipmentAddendumId, paymentAddendumId);
             cashflowComputations.get().put(key, computation);
             return computation.rows();
         };
@@ -300,10 +299,11 @@ public class ListOfContracts {
     public ReportDataLoader projectCashflowTotalsDataLoader() {
         return (reportQuery, parentBand, params) -> {
             UUID projectId = (UUID) parentBand.getData().get("projectId");
-            UUID activeAddendumId = (UUID) parentBand.getData().get("activeAddendumId");
-            CashflowKey key = new CashflowKey(projectId, activeAddendumId);
+            UUID shipmentAddendumId = (UUID) parentBand.getData().get("shipmentAddendumId");
+            UUID paymentAddendumId = (UUID) parentBand.getData().get("paymentAddendumId");
+            CashflowKey key = new CashflowKey(projectId, shipmentAddendumId, paymentAddendumId);
             CashflowComputation computation = cashflowComputations.get()
-                    .computeIfAbsent(key, ignored -> computeCashflow(projectId, activeAddendumId));
+                    .computeIfAbsent(key, ignored -> computeCashflow(projectId, shipmentAddendumId, paymentAddendumId));
 
             Map<String, Object> map = new HashMap<>();
             map.put("shipmentTotal", computation.shipmentTotal());
@@ -320,7 +320,8 @@ public class ListOfContracts {
         Map<String, Object> map = new HashMap<>();
         map.put("projectId", project.getId());
         map.put("selectedAddendumId", selectedAddendumId);
-        map.put("activeAddendumId", decision.activeAddendumId());
+        map.put("shipmentAddendumId", decision.shipmentAddendumId());
+        map.put("paymentAddendumId", decision.paymentAddendumId());
         map.put("projectName", project.getName());
         map.put("lineOfBusiness", project.getLineOfBusiness() == null ? "" : metadataTools.format(project.getLineOfBusiness()));
         map.put("cashflowSourceLabel", messages.getMessage("ru.stnovator.finassist.report.listOfContracts/cashflowSourceLabel"));
@@ -426,12 +427,12 @@ public class ListOfContracts {
         return null;
     }
 
-    private CashflowComputation computeCashflow(UUID projectId, UUID addendumId) {
+    private CashflowComputation computeCashflow(UUID projectId, UUID shipmentAddendumId, UUID paymentAddendumId) {
         TreeMap<LocalDate, CashflowDay> days = new TreeMap<>();
         BigDecimal shipmentTotal = BigDecimal.ZERO;
         BigDecimal paymentTotal = BigDecimal.ZERO;
 
-        if (addendumId == null) {
+        if (shipmentAddendumId == null) {
             List<ShipmentScheduleItem> shipmentItems = dataManager.load(ShipmentScheduleItem.class)
                     .query("""
                             select s from ShipmentScheduleItem s
@@ -441,24 +442,10 @@ public class ListOfContracts {
                     .parameter("projectId", projectId)
                     .list();
 
-            List<PaymentScheduleItem> paymentItems = dataManager.load(PaymentScheduleItem.class)
-                    .query("""
-                            select p from PaymentScheduleItem p
-                            where p.schedule.project.id = :projectId
-                            order by p.itemDate
-                            """)
-                    .parameter("projectId", projectId)
-                    .list();
-
             for (ShipmentScheduleItem item : shipmentItems) {
                 CashflowDay day = days.computeIfAbsent(item.getItemDate(), ignored -> new CashflowDay());
                 day.shipmentSum = day.shipmentSum.add(item.getAmount());
                 shipmentTotal = shipmentTotal.add(item.getAmount());
-            }
-            for (PaymentScheduleItem item : paymentItems) {
-                CashflowDay day = days.computeIfAbsent(item.getItemDate(), ignored -> new CashflowDay());
-                day.paymentSum = day.paymentSum.add(item.getAmount());
-                paymentTotal = paymentTotal.add(item.getAmount());
             }
         } else {
             List<ShipmentScheduleCorrectionItem> shipmentItems = dataManager.load(ShipmentScheduleCorrectionItem.class)
@@ -469,9 +456,32 @@ public class ListOfContracts {
                             order by s.itemDate
                             """)
                     .parameter("projectId", projectId)
-                    .parameter("addendumId", addendumId)
+                    .parameter("addendumId", shipmentAddendumId)
                     .list();
 
+            for (ShipmentScheduleCorrectionItem item : shipmentItems) {
+                CashflowDay day = days.computeIfAbsent(item.getItemDate(), ignored -> new CashflowDay());
+                day.shipmentSum = day.shipmentSum.add(item.getAmount());
+                shipmentTotal = shipmentTotal.add(item.getAmount());
+            }
+        }
+
+        if (paymentAddendumId == null) {
+            List<PaymentScheduleItem> paymentItems = dataManager.load(PaymentScheduleItem.class)
+                    .query("""
+                            select p from PaymentScheduleItem p
+                            where p.schedule.project.id = :projectId
+                            order by p.itemDate
+                            """)
+                    .parameter("projectId", projectId)
+                    .list();
+
+            for (PaymentScheduleItem item : paymentItems) {
+                CashflowDay day = days.computeIfAbsent(item.getItemDate(), ignored -> new CashflowDay());
+                day.paymentSum = day.paymentSum.add(item.getAmount());
+                paymentTotal = paymentTotal.add(item.getAmount());
+            }
+        } else {
             List<PaymentScheduleCorrectionItem> paymentItems = dataManager.load(PaymentScheduleCorrectionItem.class)
                     .query("""
                             select p from PaymentScheduleCorrectionItem p
@@ -480,14 +490,9 @@ public class ListOfContracts {
                             order by p.itemDate
                             """)
                     .parameter("projectId", projectId)
-                    .parameter("addendumId", addendumId)
+                    .parameter("addendumId", paymentAddendumId)
                     .list();
 
-            for (ShipmentScheduleCorrectionItem item : shipmentItems) {
-                CashflowDay day = days.computeIfAbsent(item.getItemDate(), ignored -> new CashflowDay());
-                day.shipmentSum = day.shipmentSum.add(item.getAmount());
-                shipmentTotal = shipmentTotal.add(item.getAmount());
-            }
             for (PaymentScheduleCorrectionItem item : paymentItems) {
                 CashflowDay day = days.computeIfAbsent(item.getItemDate(), ignored -> new CashflowDay());
                 day.paymentSum = day.paymentSum.add(item.getAmount());
@@ -532,47 +537,45 @@ public class ListOfContracts {
     }
 
     private ProjectSourceDecision resolveProjectSource(UUID projectId, UUID selectedAddendumId, ContractListMode mode) {
-        ProjectSourceKey key = new ProjectSourceKey(projectId, selectedAddendumId, mode);
-        return projectSourceDecisions.get().computeIfAbsent(key, ignored -> {
-            if (mode != ContractListMode.ACTUAL_WITH_ADDENDUMS || selectedAddendumId == null) {
-                return baseSourceDecision();
-            }
-
-            boolean hasShipmentCorrections = dataManager.loadValue(
-                            """
-                                    select count(s) from ShipmentScheduleCorrectionItem s
-                                    where s.correction.project.id = :projectId
-                                      and s.correction.addendum.id = :addendumId
-                                    """,
-                            Long.class)
-                    .parameter("projectId", projectId)
-                    .parameter("addendumId", selectedAddendumId)
-                    .one() > 0;
-
-            boolean hasPaymentCorrections = dataManager.loadValue(
-                            """
-                                    select count(p) from PaymentScheduleCorrectionItem p
-                                    where p.correction.project.id = :projectId
-                                      and p.correction.addendum.id = :addendumId
-                                    """,
-                            Long.class)
-                    .parameter("projectId", projectId)
-                    .parameter("addendumId", selectedAddendumId)
-                    .one() > 0;
-
-            if (hasShipmentCorrections && hasPaymentCorrections) {
-                return new ProjectSourceDecision(
-                        selectedAddendumId,
-                        messages.getMessage("ru.stnovator.finassist.report.listOfContracts/cashflowSourceAddendum")
-                );
-            }
-
+        if (mode != ContractListMode.ACTUAL_WITH_ADDENDUMS || selectedAddendumId == null) {
             return baseSourceDecision();
-        });
+        }
+
+        boolean hasShipmentCorrections = dataManager.loadValue(
+                        """
+                                select count(s) from ShipmentScheduleCorrectionItem s
+                                where s.correction.project.id = :projectId
+                                  and s.correction.addendum.id = :addendumId
+                                """,
+                        Long.class)
+                .parameter("projectId", projectId)
+                .parameter("addendumId", selectedAddendumId)
+                .one() > 0;
+
+        boolean hasPaymentCorrections = dataManager.loadValue(
+                        """
+                                select count(p) from PaymentScheduleCorrectionItem p
+                                where p.correction.project.id = :projectId
+                                  and p.correction.addendum.id = :addendumId
+                                """,
+                        Long.class)
+                .parameter("projectId", projectId)
+                .parameter("addendumId", selectedAddendumId)
+                .one() > 0;
+
+        String sourceKey = hasShipmentCorrections
+                ? (hasPaymentCorrections ? "cashflowSourceAddendum" : "cashflowSourceShipmentAddendum")
+                : (hasPaymentCorrections ? "cashflowSourcePaymentAddendum" : "cashflowSourceBase");
+        return new ProjectSourceDecision(
+                hasShipmentCorrections ? selectedAddendumId : null,
+                hasPaymentCorrections ? selectedAddendumId : null,
+                messages.getMessage("ru.stnovator.finassist.report.listOfContracts/" + sourceKey)
+        );
     }
 
     private ProjectSourceDecision baseSourceDecision() {
         return new ProjectSourceDecision(
+                null,
                 null,
                 messages.getMessage("ru.stnovator.finassist.report.listOfContracts/cashflowSourceBase")
         );
@@ -596,13 +599,10 @@ public class ListOfContracts {
         private BigDecimal paymentSum = BigDecimal.ZERO;
     }
 
-    private record CashflowKey(UUID projectId, UUID addendumId) {
+    private record CashflowKey(UUID projectId, UUID shipmentAddendumId, UUID paymentAddendumId) {
     }
 
-    private record ProjectSourceKey(UUID projectId, UUID selectedAddendumId, ContractListMode mode) {
-    }
-
-    private record ProjectSourceDecision(UUID activeAddendumId, String sourceMessage) {
+    private record ProjectSourceDecision(UUID shipmentAddendumId, UUID paymentAddendumId, String sourceMessage) {
     }
 
     private record CashflowComputation(

@@ -87,7 +87,8 @@ class ListOfContractsTest {
 
         BandData projectBand = new BandData("Project");
         projectBand.addData("projectId", fixture.project.getId());
-        projectBand.addData("activeAddendumId", null);
+        projectBand.addData("shipmentAddendumId", null);
+        projectBand.addData("paymentAddendumId", null);
 
         List<Map<String, Object>> rows = listOfContracts.projectCashflowRecordsDataLoader()
                 .loadData(null, projectBand, Map.of());
@@ -133,7 +134,7 @@ class ListOfContractsTest {
                 .getFirst();
 
         assertThat(projectRow.get("cashflowSource")).isEqualTo("База");
-        assertThat(projectRow.get("activeAddendumId")).isNull();
+        assertThat(projectRow).containsEntry("shipmentAddendumId", null).containsEntry("paymentAddendumId", null);
     }
 
     @Test
@@ -182,11 +183,12 @@ class ListOfContractsTest {
                 ))
                 .getFirst();
         assertThat(projectRow.get("cashflowSource")).isEqualTo("Доп. соглашение");
-        assertThat(projectRow.get("activeAddendumId")).isEqualTo(contractRow.get("selectedAddendumId"));
+        assertThat(projectRow).containsEntry("shipmentAddendumId", contractRow.get("selectedAddendumId"))
+                .containsEntry("paymentAddendumId", contractRow.get("selectedAddendumId"));
 
         BandData projectBand = new BandData("Project");
         projectBand.addData("projectId", fixture.project.getId());
-        projectBand.addData("activeAddendumId", contractRow.get("selectedAddendumId"));
+        projectRow.forEach(projectBand::addData);
 
         List<Map<String, Object>> rows = listOfContracts.projectCashflowRecordsDataLoader()
                 .loadData(null, projectBand, params);
@@ -207,59 +209,111 @@ class ListOfContractsTest {
     }
 
     @Test
-    void actualModeFallsBackToBaseWhenProjectHasIncompleteCorrectionPair() {
-        ContractFixture fixture = createFixture("fallback");
+    void shipmentOnlyCorrectionPreservesBasePayments() {
+        assertIndependentSources(true, false, 100);
+    }
 
-        createShipmentItem(fixture.shipmentSchedule, LocalDate.of(2026, 2, 1), 500);
-        createPaymentItem(fixture.paymentSchedule, LocalDate.of(2026, 2, 1), 200);
+    @Test
+    void paymentOnlyCorrectionPreservesBaseShipments() {
+        assertIndependentSources(false, true, 100);
+    }
 
+    @Test
+    void zeroCorrectionReplacesBaseAndNeitherCorrectionUsesBase() {
+        assertIndependentSources(true, false, 0);
+        assertIndependentSources(false, false, 0);
+    }
+
+    private void assertIndependentSources(boolean shipment, boolean payment, int amount) {
+        ContractFixture fixture = createFixture("mixed");
+        LocalDate baseDate = LocalDate.of(2026, 2, 1);
+        LocalDate correctionDate = LocalDate.of(2026, 2, 12);
+        createShipmentItem(fixture.shipmentSchedule, baseDate, 500);
+        createPaymentItem(fixture.paymentSchedule, baseDate, 200);
         Addendum addendum = createAddendum(fixture.contract, "A-04", LocalDate.of(2026, 2, 10));
-        createShipmentCorrectionItem(fixture.project, addendum, LocalDate.of(2026, 2, 12), 100);
+        if (shipment) createShipmentCorrectionItem(fixture.project, addendum, correctionDate, amount);
+        if (payment) createPaymentCorrectionItem(fixture.project, addendum, correctionDate, amount);
+        Map<String, Object> project = projectRow(fixture, LocalDate.of(2026, 2, 10), ContractListMode.ACTUAL_WITH_ADDENDUMS);
+        BandData band = projectBand(project);
+        List<Map<String, Object>> rows = listOfContracts.projectCashflowRecordsDataLoader().loadData(null, band, Map.of());
+        Map<String, Object> totals = listOfContracts.projectCashflowTotalsDataLoader().loadData(null, band, Map.of()).getFirst();
+        assertThat((BigDecimal) totals.get("shipmentTotal")).isEqualByComparingTo(shipment ? String.valueOf(amount) : "500");
+        assertThat((BigDecimal) totals.get("paymentTotal")).isEqualByComparingTo(payment ? String.valueOf(amount) : "200");
+        assertThat(rows.getFirst().get("cashflowDate")).isEqualTo(baseDate);
+        assertThat((BigDecimal) rows.getFirst().get("shipmentSum")).isEqualByComparingTo(shipment ? "0" : "500");
+        assertThat((BigDecimal) rows.getFirst().get("paymentSum")).isEqualByComparingTo(payment ? "0" : "200");
+        if (shipment || payment) {
+            assertThat(rows).hasSize(2);
+            assertThat(rows.get(1).get("cashflowDate")).isEqualTo(correctionDate);
+            assertThat((BigDecimal) rows.get(1).get("shipmentSum")).isEqualByComparingTo(shipment ? String.valueOf(amount) : "0");
+            assertThat((BigDecimal) rows.get(1).get("paymentSum")).isEqualByComparingTo(payment ? String.valueOf(amount) : "0");
+        }
+        assertThat(project.get("cashflowSource")).isEqualTo(shipment
+                ? "Отгрузки: доп. соглашение; оплаты: база"
+                : payment ? "Отгрузки: база; оплаты: доп. соглашение" : "База");
+    }
 
-        BandData customerBand = new BandData("Customer");
-        customerBand.addData("customerId", fixture.customer.getId());
+    @Test
+    void sourceDecisionRefreshesAfterEditAndRespectsModeAndDate() {
+        ContractFixture fixture = createFixture("refresh");
+        LocalDate effective = LocalDate.of(2026, 2, 10);
+        Addendum addendum = createAddendum(fixture.contract, "A-01", effective);
+        ShipmentScheduleCorrection empty = dataManager.create(ShipmentScheduleCorrection.class);
+        empty.setProject(fixture.project);
+        empty.setAddendum(addendum);
+        cleanupEntities.add(dataManager.save(empty));
+        assertThat(projectRow(fixture, effective, ContractListMode.ACTUAL_WITH_ADDENDUMS).get("cashflowSource")).isEqualTo("База");
+        createShipmentCorrectionItem(fixture.project, addendum, effective, 100);
+        assertThat(projectRow(fixture, effective, ContractListMode.ACTUAL_WITH_ADDENDUMS).get("cashflowSource"))
+                .isEqualTo("Отгрузки: доп. соглашение; оплаты: база");
+        createPaymentCorrectionItem(fixture.project, addendum, effective, 40);
+        assertThat(projectRow(fixture, effective, ContractListMode.ACTUAL_WITH_ADDENDUMS).get("cashflowSource")).isEqualTo("Доп. соглашение");
+        assertThat(projectRow(fixture, effective.minusDays(1), ContractListMode.ACTUAL_WITH_ADDENDUMS).get("cashflowSource")).isEqualTo("База");
+        assertThat(projectRow(fixture, effective, ContractListMode.BASE).get("cashflowSource")).isEqualTo("База");
+    }
 
-        Map<String, Object> params = Map.of(
-                "reportDate", LocalDate.of(2026, 2, 15),
-                "contractListMode", ContractListMode.ACTUAL_WITH_ADDENDUMS,
-                "contract", fixture.contract
-        );
+    @Test
+    void mixedSourcesAggregateSameDateAndKeepOtherProjectsSeparate() {
+        ContractFixture fixture = createFixture("isolation");
+        LocalDate date = LocalDate.of(2026, 2, 10);
+        Addendum addendum = createAddendum(fixture.contract, "A-01", date);
+        createShipmentItem(fixture.shipmentSchedule, date, 500);
+        createPaymentItem(fixture.paymentSchedule, date, 200);
+        createPaymentItem(fixture.paymentSchedule, date, 50);
+        createShipmentCorrectionItem(fixture.project, addendum, date, 70);
+        createShipmentCorrectionItem(fixture.project, addendum, date, 30);
+        Project other = dataManager.create(Project.class);
+        other.setContract(fixture.contract);
+        other.setLineOfBusiness(fixture.project.getLineOfBusiness());
+        other.setName("Other project");
+        other = dataManager.save(other);
+        cleanupEntities.add(other);
+        createPaymentCorrectionItem(other, addendum, date, 999);
+        BandData band = projectBand(projectRow(fixture, date, ContractListMode.ACTUAL_WITH_ADDENDUMS));
+        List<Map<String, Object>> rows = listOfContracts.projectCashflowRecordsDataLoader().loadData(null, band, Map.of());
+        Map<String, Object> totals = listOfContracts.projectCashflowTotalsDataLoader().loadData(null, band, Map.of()).getFirst();
+        assertThat(rows).hasSize(1);
+        assertThat((BigDecimal) rows.getFirst().get("shipmentSum")).isEqualByComparingTo("100");
+        assertThat((BigDecimal) rows.getFirst().get("paymentSum")).isEqualByComparingTo("250");
+        assertThat(totals.get("shipmentTotal")).isEqualTo(rows.getFirst().get("shipmentSum"));
+        assertThat(totals.get("paymentTotal")).isEqualTo(rows.getFirst().get("paymentSum"));
+    }
 
-        Map<String, Object> contractRow = listOfContracts.contractsDataLoader()
-                .loadData(null, customerBand, params)
-                .getFirst();
-        assertThat(contractRow.get("selectedAddendumId")).isEqualTo(addendum.getId());
+    private Map<String, Object> projectRow(ContractFixture fixture, LocalDate date, ContractListMode mode) {
+        BandData customer = new BandData("Customer");
+        customer.addData("customerId", fixture.customer.getId());
+        Map<String, Object> params = Map.of("contract", fixture.contract, "project", fixture.project,
+                "reportDate", date, "contractListMode", mode);
+        Map<String, Object> contract = listOfContracts.contractsDataLoader().loadData(null, customer, params).getFirst();
+        BandData parent = new BandData("Contract");
+        contract.forEach(parent::addData);
+        return listOfContracts.projectsDataLoader().loadData(null, parent, params).getFirst();
+    }
 
-        BandData contractBand = new BandData("Contract");
-        contractBand.addData("contractId", fixture.contract.getId());
-        contractBand.addData("selectedAddendumId", contractRow.get("selectedAddendumId"));
-
-        Map<String, Object> projectRow = listOfContracts.projectsDataLoader()
-                .loadData(null, contractBand, Map.of(
-                        "project", fixture.project,
-                        "contractListMode", ContractListMode.ACTUAL_WITH_ADDENDUMS
-                ))
-                .getFirst();
-        assertThat(projectRow.get("cashflowSource")).isEqualTo("База");
-        assertThat(projectRow.get("activeAddendumId")).isNull();
-
-        BandData projectBand = new BandData("Project");
-        projectBand.addData("projectId", fixture.project.getId());
-        projectBand.addData("activeAddendumId", null);
-
-        List<Map<String, Object>> rows = listOfContracts.projectCashflowRecordsDataLoader()
-                .loadData(null, projectBand, params);
-        List<Map<String, Object>> totals = listOfContracts.projectCashflowTotalsDataLoader()
-                .loadData(null, projectBand, params);
-
-        Map<String, Object> row = rows.getFirst();
-        assertThat(row.get("cashflowDate")).isEqualTo(LocalDate.of(2026, 2, 1));
-        assertThat((BigDecimal) row.get("shipmentSum")).isEqualByComparingTo("500");
-        assertThat((BigDecimal) row.get("paymentSum")).isEqualByComparingTo("200");
-
-        Map<String, Object> totalsRow = totals.getFirst();
-        assertThat((BigDecimal) totalsRow.get("shipmentTotal")).isEqualByComparingTo("500");
-        assertThat((BigDecimal) totalsRow.get("paymentTotal")).isEqualByComparingTo("200");
+    private BandData projectBand(Map<String, Object> row) {
+        BandData band = new BandData("Project");
+        row.forEach(band::addData);
+        return band;
     }
 
     private InputParameterDef findInputParameter(String alias) {
