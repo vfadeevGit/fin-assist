@@ -24,6 +24,9 @@ out/
 ### VS Code ###
 .vscode/
 
+# Codex #
+.codex
+
 # The following files are generated/updated by vaadin-gradle-plugin
 node_modules/
 frontend/generated/

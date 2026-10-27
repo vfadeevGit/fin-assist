@@ -121,6 +121,7 @@
         </tabSheet>
         <hbox id="detailActions">
             <button id="saveAndCloseBtn" action="saveAction"/>
+            <button/>
             <button id="closeBtn" action="closeAction"/>
         </hbox>
     </layout>

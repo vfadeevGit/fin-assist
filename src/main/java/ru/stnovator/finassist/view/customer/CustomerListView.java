@@ -1,11 +1,8 @@
 package ru.stnovator.finassist.view.customer;
 
 import com.vaadin.flow.router.Route;
-import io.jmix.flowui.view.DialogMode;
-import io.jmix.flowui.view.LookupComponent;
-import io.jmix.flowui.view.StandardListView;
-import io.jmix.flowui.view.ViewController;
-import io.jmix.flowui.view.ViewDescriptor;
+import io.jmix.flowui.kit.component.button.JmixButton;
+import io.jmix.flowui.view.*;
 import ru.stnovator.finassist.entity.Customer;
 import ru.stnovator.finassist.view.main.MainView;
 
@@ -15,4 +12,11 @@ import ru.stnovator.finassist.view.main.MainView;
 @LookupComponent("customersDataGrid")
 @DialogMode(width = "64em")
 public class CustomerListView extends StandardListView<Customer> {
+    @ViewComponent
+    private JmixButton selectBtn;
+
+    @Subscribe
+    public void onInit(final InitEvent event) {
+//        JmixButton.setElement();
+    }
 }

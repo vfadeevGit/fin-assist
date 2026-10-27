@@ -28,6 +28,7 @@
     </moduleSettings>
   </component>
   <component name="JmixPluginProjectSettings">
+    <option name="addLogicalFilePathToChangelogs" value="false" />
     <option name="roleMultilineAnnotations" value="false" />
     <option name="savedDbProperties">
       <list>

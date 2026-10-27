@@ -9,6 +9,7 @@ import io.jmix.security.role.annotation.EntityPolicy;
 import io.jmix.security.role.annotation.ResourceRole;
 import io.jmix.security.role.annotation.SpecificPolicy;
 import io.jmix.securityflowui.role.annotation.ViewPolicy;
+import ru.stnovator.finassist.entity.PaymentScheduleCorrection;
 
 @ResourceRole(name = "UI: minimal access", code = UiMinimalRole.CODE, scope = SecurityScope.UI)
 public interface UiMinimalRole {
@@ -25,4 +26,7 @@ public interface UiMinimalRole {
     @EntityPolicy(entityClass = KeyValueEntity.class, actions = EntityPolicyAction.READ)
     @EntityAttributePolicy(entityClass = KeyValueEntity.class, attributes = "*", action = EntityAttributePolicyAction.VIEW)
     void keyValueEntity();
+
+    @EntityPolicy(entityClass = PaymentScheduleCorrection.class, actions = {EntityPolicyAction.CREATE, EntityPolicyAction.UPDATE, EntityPolicyAction.READ})
+    void paymentScheduleCorrection();
 }
