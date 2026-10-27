@@ -1,0 +1,179 @@
+name: CI and Docker delivery
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy this main revision to production after testing and publishing
+        type: boolean
+        default: false
+        required: true
+      no_cache:
+        description: Rebuild every Docker layer without the build cache
+        type: boolean
+        default: false
+        required: true
+
+permissions:
+  contents: read
+
+# Do not interrupt a run that may already be deploying.
+concurrency:
+  group: delivery-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: vfadeevdocker/fin-assist
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: finassist_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d finassist_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      MAIN_DATASOURCE_URL: jdbc:postgresql://localhost:5432/finassist_ci
+      MAIN_DATASOURCE_USERNAME: postgres
+      MAIN_DATASOURCE_PASSWORD: ci-only-password
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5
+      - name: Test deployment script
+        run: python3 -m unittest discover -s scripts/tests -v
+      - name: Test application
+        run: bash gradlew --no-daemon test
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: test-reports
+          path: |
+            build/reports/tests/test
+            build/test-results/test
+          if-no-files-found: ignore
+
+  image:
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Commit image tag
+        id: tag
+        run: echo "tag=sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME || 'vfadeevdocker' }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build image (publish only from main)
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          platforms: linux/amd64
+          no-cache: ${{ github.event_name == 'workflow_dispatch' && inputs.no_cache }}
+          pull: true
+          push: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+          tags: ${{ env.IMAGE }}:${{ steps.tag.outputs.tag }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Record published image
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          printf 'Published image: `%s:%s@%s`\n' "$IMAGE" "$TAG" "$DIGEST" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    needs: image
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    environment:
+      name: production
+      url: https://fin-assist.st-novator.ru
+    concurrency:
+      group: production
+      cancel-in-progress: false
+    env:
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST || '2.59.42.251' }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+      DEPLOY_USER: deploy
+      DEPLOY_DOMAIN: fin-assist.st-novator.ru
+      IMAGE_TAG: ${{ needs.image.outputs.tag }}
+      IMAGE_DIGEST: ${{ needs.image.outputs.digest }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.PRODUCTION_KNOWN_HOSTS }}
+        run: |
+          : "${SSH_PRIVATE_KEY:?Set production secret PRODUCTION_SSH_KEY}"
+          : "${SSH_KNOWN_HOSTS:?Set production secret PRODUCTION_KNOWN_HOSTS}"
+          [[ "$DEPLOY_USER" =~ ^[a-z_][a-z0-9_-]*$ ]]
+          [[ "$DEPLOY_HOST" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]+$ ]]
+          [[ "$DEPLOY_PORT" =~ ^[0-9]+$ ]]
+          mkdir -p "$RUNNER_TEMP/deploy-ssh"
+          chmod 700 "$RUNNER_TEMP/deploy-ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$RUNNER_TEMP/deploy-ssh/key"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$RUNNER_TEMP/deploy-ssh/known_hosts"
+          chmod 600 "$RUNNER_TEMP/deploy-ssh/"*
+      - name: Deploy exact image
+        run: |
+          [[ "$IMAGE_TAG" =~ ^sha-[0-9a-f]{40}$ ]]
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          printf -v remote 'sudo -n /usr/local/sbin/finassist-deploy %q %q' \
+            "$IMAGE_TAG" "$IMAGE_DIGEST"
+          ssh -i "$RUNNER_TEMP/deploy-ssh/key" \
+            -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/deploy-ssh/known_hosts" \
+            -o ConnectTimeout=15 -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
+            -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" "$remote"
+      - name: Verify public HTTPS endpoint
+        run: |
+          curl --fail --silent --show-error --output /dev/null \
+            --connect-timeout 10 --max-time 30 \
+            --retry 5 --retry-delay 5 --retry-all-errors \
+            "https://$DEPLOY_DOMAIN/login"
+          printf 'Deployed `%s:%s@%s` to https://%s\n' \
+            "$IMAGE" "$IMAGE_TAG" "$IMAGE_DIGEST" "$DEPLOY_DOMAIN" >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove temporary SSH credentials
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP/deploy-ssh"
+

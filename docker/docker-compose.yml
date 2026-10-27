@@ -18,7 +18,7 @@ services:
 
   finassist:
     platform: linux/amd64
-    image: ${APP_IMAGE}:${APP_TAG}
+    image: ${APP_IMAGE}:${APP_TAG}${APP_DIGEST:+@}${APP_DIGEST:-}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -55,6 +55,7 @@ services:
 
   certbot:
     image: certbot/certbot:latest
+    entrypoint: []
     restart: unless-stopped
     depends_on:
       - nginx

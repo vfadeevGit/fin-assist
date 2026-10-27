@@ -1,0 +1,25 @@
+name: Check Docker Hub access
+
+on:
+  push:
+    branches: [ci/github-actions]
+    paths: [.github/workflows/registry-check.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  authenticate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Authenticate with the repository secret
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
+        with:
+          username: vfadeevdocker
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Read the existing production image manifest
+        run: |
+          docker manifest inspect vfadeevdocker/fin-assist:0.0.3-SNAPSHOT-prod > /dev/null
+          echo 'Docker Hub authentication and image manifest access succeeded. No image was pushed or deployed.' >> "$GITHUB_STEP_SUMMARY"

@@ -2,7 +2,7 @@
 
 This setup is intended for a plain VPS deployment where:
 
-- Docker Hub builds and stores the application image.
+- GitHub Actions builds the application image and stores it on Docker Hub.
 - The VPS runs Docker Engine with Docker Compose.
 - `nginx` terminates TLS and proxies requests to the `finassist` container.
 - `certbot` obtains and renews the Let's Encrypt certificate through the shared webroot.
@@ -53,7 +53,7 @@ docker compose --env-file docker/.env \
 
 docker compose --env-file docker/.env \
   -f docker/docker-compose.yml \
-  run --rm certbot certonly \
+  run --rm --entrypoint certbot certbot certonly \
   --webroot -w /var/www/certbot \
   --email "$LETSENCRYPT_EMAIL" \
   --agree-tos \
@@ -87,6 +87,12 @@ export LETSENCRYPT_EMAIL=ops@example.com
 ```
 
 ## Updating the application
+
+For automated builds and manual production deployments, see [GitHub Actions setup](CI-CD.md).
+Production runs at `https://fin-assist.st-novator.ru` on Timeweb host `2.59.42.251`.
+
+When switching manually to a tag, clear `APP_DIGEST` in `docker/.env` first;
+otherwise Compose continues to use the previously pinned digest.
 
 1. Push changes to GitHub.
 2. Build and push an AMD64-compatible Docker image tag to Docker Hub, or wait for Docker Hub to publish that exact tag.
