@@ -37,6 +37,32 @@
             </section>
         </drawerLayout>
         <initialLayout>
+            <div id="dashboard" classNames="main-dashboard">
+                <div classNames="dashboard-heading">
+                    <h2 text="msg://dashboard.heading"/>
+                    <button id="dashboardRefreshButton" text="msg://dashboard.refresh"/>
+                </div>
+                <span id="dashboardEmptyMessage" text="msg://dashboard.empty" visible="false"/>
+                <div classNames="dashboard-grid dashboard-indicators">
+                    <div id="customersIndicator" classNames="dashboard-indicator">
+                        <span text="msg://dashboard.customers.total" classNames="dashboard-count-label"/>
+                        <span id="customersCount" classNames="dashboard-count"/>
+                    </div>
+                    <div id="contractsIndicator" classNames="dashboard-indicator">
+                        <span text="msg://dashboard.contracts.total" classNames="dashboard-count-label"/>
+                        <span id="contractsCount" classNames="dashboard-count"/>
+                    </div>
+                    <div id="projectsIndicator" classNames="dashboard-indicator">
+                        <span text="msg://dashboard.projects.total" classNames="dashboard-count-label"/>
+                        <span id="projectsCount" classNames="dashboard-count"/>
+                    </div>
+                </div>
+                <div classNames="dashboard-grid dashboard-tiles">
+                    <button id="customersTile" classNames="dashboard-tile"/>
+                    <button id="contractsTile" classNames="dashboard-tile"/>
+                    <button id="projectsTile" classNames="dashboard-tile"/>
+                </div>
+            </div>
         </initialLayout>
     </appLayout>
 </mainView>
