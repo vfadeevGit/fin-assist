@@ -1,5 +1,16 @@
-/* Predefined styles for the LoginView */
-
+/* Preserve the framework login layout and authentication behavior. */
 .jmix-login-main-layout {
   background-color: var(--lumo-shade-5pct);
+}
+
+html:not([theme~='dark']) .jmix-login-main-layout {
+  background: var(--fin-canvas);
+  padding: 1rem;
+}
+
+html:not([theme~='dark']) vaadin-login-form::part(form) {
+  background: var(--fin-surface);
+  border: 1px solid var(--fin-border);
+  border-top: 3px solid var(--fin-brand);
+  border-radius: 0.75rem;
 }
