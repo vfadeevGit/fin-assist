@@ -1,5 +1,8 @@
 package ru.stnovator.finassist.view.paymentschedulecorrection;
 
+import ru.stnovator.finassist.view.support.DetailViewPresentation;
+import io.jmix.flowui.view.DialogMode;
+
 import com.vaadin.flow.component.ClickEvent;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.grid.Grid;
@@ -40,11 +43,20 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
 
+@DialogMode(width = "64rem", height = "min(52rem, calc(100dvh - 6rem))", maxWidth = "calc(100vw - 2rem)", keepInViewport = true, resizable = true)
 @Route(value = "payment-schedule-corrections/:id", layout = MainView.class)
 @ViewController("PaymentScheduleCorrection.detail")
 @ViewDescriptor("payment-schedule-correction-detail-view.xml")
 @EditedEntityContainer("paymentScheduleCorrectionDc")
 public class PaymentScheduleCorrectionDetailView extends StandardDetailView<PaymentScheduleCorrection> {
+    @Autowired
+    private DetailViewPresentation detailViewPresentation;
+
+    @Subscribe
+    public void onPresentationReady(final ReadyEvent event) {
+        detailViewPresentation.initialize(this);
+    }
+
     @ViewComponent
     private CollectionContainer<PaymentScheduleCorrectionItem> paymentScheduleCorrectionItemsDc;
     @ViewComponent

@@ -1,11 +1,18 @@
 package ru.stnovator.finassist.view.project;
 
+import ru.stnovator.finassist.view.support.DetailViewPresentation;
+import io.jmix.flowui.view.DialogMode;
+import org.springframework.beans.factory.annotation.Autowired;
+
 import com.vaadin.flow.component.ClickEvent;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.component.tabs.Tab;
 import io.jmix.core.Sort;
+import io.jmix.flowui.action.ExecutableAction;
+import io.jmix.flowui.action.SecuredBaseAction;
+import io.jmix.flowui.kit.action.ActionPerformedEvent;
 import io.jmix.core.metamodel.datatype.DatatypeFormatter;
 import io.jmix.flowui.component.tabsheet.JmixTabSheet;
 import io.jmix.flowui.component.grid.DataGrid;
@@ -24,11 +31,20 @@ import ru.stnovator.finassist.view.main.MainView;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 
+@DialogMode(width = "64rem", height = "min(52rem, calc(100dvh - 6rem))", maxWidth = "calc(100vw - 2rem)", keepInViewport = true, resizable = true)
 @Route(value = "projects/:id", layout = MainView.class)
 @ViewController("Project.detail")
 @ViewDescriptor("project-detail-view.xml")
 @EditedEntityContainer("projectDc")
 public class ProjectDetailView extends StandardDetailView<Project> {
+    @Autowired
+    private DetailViewPresentation detailViewPresentation;
+
+    @Subscribe
+    public void onPresentationReady(final ReadyEvent event) {
+        detailViewPresentation.initialize(this);
+    }
+
 
     @ViewComponent
     private DataContext dataContext;
@@ -41,23 +57,11 @@ public class ProjectDetailView extends StandardDetailView<Project> {
     private Button createShipmentScheduleBtn;
     @ViewComponent
     private Button removeShipmentScheduleBtn;
-    @ViewComponent
-    private Button createShipmentScheduleItemBtn;
-    @ViewComponent
-    private Button editShipmentScheduleItemBtn;
-    @ViewComponent
-    private Button removeShipmentScheduleItemBtn;
 
     @ViewComponent
     private Button createPaymentScheduleBtn;
     @ViewComponent
     private Button removePaymentScheduleBtn;
-    @ViewComponent
-    private Button createPaymentScheduleItemBtn;
-    @ViewComponent
-    private Button editPaymentScheduleItemBtn;
-    @ViewComponent
-    private Button removePaymentScheduleItemBtn;
 
     @ViewComponent
     private DataGrid<ShipmentScheduleItem> shipmentScheduleItemsDataGrid;
@@ -78,6 +82,43 @@ public class ProjectDetailView extends StandardDetailView<Project> {
 
     public ProjectDetailView(DatatypeFormatter datatypeFormatter) {
         this.datatypeFormatter = datatypeFormatter;
+    }
+
+    @Subscribe
+    public void onInit(final InitEvent event) {
+        for (String actionId : java.util.List.of("create", "edit", "remove")) {
+            ((SecuredBaseAction<?>) shipmentScheduleItemsDataGrid.getAction(actionId))
+                    .addEnabledRule(() -> getEditedEntity().getShipmentSchedule() != null);
+            ((SecuredBaseAction<?>) paymentScheduleItemsDataGrid.getAction(actionId))
+                    .addEnabledRule(() -> getEditedEntity().getPaymentSchedule() != null);
+        }
+    }
+
+    @Subscribe("shipmentScheduleItemsDataGrid.edit")
+    public void onShipmentItemEdit(final ActionPerformedEvent event) {
+        performRowAction(event, shipmentScheduleItemsDataGrid);
+    }
+
+    @Subscribe("shipmentScheduleItemsDataGrid.remove")
+    public void onShipmentItemRemove(final ActionPerformedEvent event) {
+        performRowAction(event, shipmentScheduleItemsDataGrid);
+    }
+
+    @Subscribe("paymentScheduleItemsDataGrid.edit")
+    public void onPaymentItemEdit(final ActionPerformedEvent event) {
+        performRowAction(event, paymentScheduleItemsDataGrid);
+    }
+
+    @Subscribe("paymentScheduleItemsDataGrid.remove")
+    public void onPaymentItemRemove(final ActionPerformedEvent event) {
+        performRowAction(event, paymentScheduleItemsDataGrid);
+    }
+
+    private void performRowAction(ActionPerformedEvent event, DataGrid<?> grid) {
+        event.getSource().refreshState();
+        if (grid.getSingleSelectedItem() != null && event.getSource().isEnabled()) {
+            ((ExecutableAction) event.getSource()).execute();
+        }
     }
 
     @Subscribe
@@ -157,20 +198,22 @@ public class ProjectDetailView extends StandardDetailView<Project> {
         Project project = getEditedEntity();
 
         boolean hasShipmentSchedule = project.getShipmentSchedule() != null;
-        createShipmentScheduleBtn.setEnabled(!hasShipmentSchedule);
-        removeShipmentScheduleBtn.setEnabled(hasShipmentSchedule);
-        createShipmentScheduleItemBtn.setEnabled(hasShipmentSchedule);
-        editShipmentScheduleItemBtn.setEnabled(hasShipmentSchedule);
-        removeShipmentScheduleItemBtn.setEnabled(hasShipmentSchedule);
+        createShipmentScheduleBtn.setVisible(!hasShipmentSchedule);
+        removeShipmentScheduleBtn.setVisible(hasShipmentSchedule);
+        shipmentScheduleItemsDataGrid.getAction("create").refreshState();
+        shipmentScheduleItemsDataGrid.getAction("edit").refreshState();
+        shipmentScheduleItemsDataGrid.getAction("remove").refreshState();
         shipmentScheduleItemsDataGrid.setEnabled(hasShipmentSchedule);
+        detailViewPresentation.refreshGrid(shipmentScheduleItemsDataGrid);
 
         boolean hasPaymentSchedule = project.getPaymentSchedule() != null;
-        createPaymentScheduleBtn.setEnabled(!hasPaymentSchedule);
-        removePaymentScheduleBtn.setEnabled(hasPaymentSchedule);
-        createPaymentScheduleItemBtn.setEnabled(hasPaymentSchedule);
-        editPaymentScheduleItemBtn.setEnabled(hasPaymentSchedule);
-        removePaymentScheduleItemBtn.setEnabled(hasPaymentSchedule);
+        createPaymentScheduleBtn.setVisible(!hasPaymentSchedule);
+        removePaymentScheduleBtn.setVisible(hasPaymentSchedule);
+        paymentScheduleItemsDataGrid.getAction("create").refreshState();
+        paymentScheduleItemsDataGrid.getAction("edit").refreshState();
+        paymentScheduleItemsDataGrid.getAction("remove").refreshState();
         paymentScheduleItemsDataGrid.setEnabled(hasPaymentSchedule);
+        detailViewPresentation.refreshGrid(paymentScheduleItemsDataGrid);
     }
 
     @Subscribe(id = "shipmentScheduleItemsDc", target = Target.DATA_CONTAINER)

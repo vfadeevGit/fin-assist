@@ -1,5 +1,8 @@
 package ru.stnovator.finassist.view.addendum;
 
+import ru.stnovator.finassist.view.support.DetailViewPresentation;
+import io.jmix.flowui.view.DialogMode;
+
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.router.QueryParameters;
 import com.vaadin.flow.router.Route;
@@ -21,11 +24,20 @@ import ru.stnovator.finassist.entity.Addendum;
 import ru.stnovator.finassist.entity.Contract;
 import ru.stnovator.finassist.view.main.MainView;
 
+@DialogMode(width = "64rem", height = "min(52rem, calc(100dvh - 6rem))", maxWidth = "calc(100vw - 2rem)", keepInViewport = true, resizable = true)
 @Route(value = "addenda/:id", layout = MainView.class)
 @ViewController("Addendum.detail")
 @ViewDescriptor("addendum-detail-view.xml")
 @EditedEntityContainer("addendumDc")
 public class AddendumDetailView extends StandardDetailView<Addendum> {
+    @Autowired
+    private DetailViewPresentation detailViewPresentation;
+
+    @Subscribe
+    public void onPresentationReady(final ReadyEvent event) {
+        detailViewPresentation.initialize(this);
+    }
+
     @ViewComponent
     private EntityPicker<Contract> contractField;
     @ViewComponent

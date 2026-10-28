@@ -1,41 +1,43 @@
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<view xmlns="http://jmix.io/schema/flowui/view"
-      title="msg://UserDetailView.title"
-      focusComponent="form">
+<?xml version='1.0' encoding='UTF-8'?>
+<view xmlns="http://jmix.io/schema/flowui/view" title="msg://UserDetailView.title" focusComponent="form">
     <data>
-        <instance id="userDc"
-                  class="ru.stnovator.finassist.entity.User">
-            <fetchPlan extends="_base"/>
-            <loader/>
+        <instance id="userDc" class="ru.stnovator.finassist.entity.User">
+            <fetchPlan extends="_base" />
+            <loader />
         </instance>
     </data>
     <actions>
-        <action id="saveAction" type="detail_saveClose"/>
-        <action id="closeAction" type="detail_close"/>
+        <action id="saveAction" type="detail_saveClose" />
+        <action id="closeAction" type="detail_close" />
     </actions>
     <facets>
-        <dataLoadCoordinator auto="true"/>
+        <dataLoadCoordinator auto="true" />
     </facets>
-    <layout>
-        <formLayout id="form" dataContainer="userDc">
-            <textField id="usernameField" property="username" readOnly="true"/>
-            <passwordField id="passwordField"
-                           label="msg://ru.stnovator.finassist.entity/User.password"
-                           required="true"
-                           visible="false"/>
-            <passwordField id="confirmPasswordField"
-                           label="msg://confirmPassword"
-                           required="true"
-                           visible="false"/>
-            <textField id="firstNameField" property="firstName"/>
-            <textField id="lastNameField" property="lastName"/>
-            <textField id="emailField" property="email"/>
-            <comboBox id="timeZoneField" property="timeZoneId" clearButtonVisible="true"/>
-            <checkbox id="activeField" property="active"/>
-        </formLayout>
-        <hbox id="detailActions">
-            <button id="saveAndCloseBtn" action="saveAction"/>
-            <button id="closeBtn" action="closeAction"/>
+    <layout classNames="detail-editor" padding="false" spacing="false" height="100%">
+        <scroller id="detailScroller" width="100%" scrollBarsDirection="VERTICAL" classNames="detail-scroller">
+            <vbox id="detailContent" width="100%" padding="false" spacing="false" classNames="detail-content">
+                <formLayout id="form" dataContainer="userDc" classNames="detail-form-compact">
+                    <responsiveSteps>
+                        <responsiveStep minWidth="0" columns="1" />
+                        <responsiveStep minWidth="40em" columns="2" />
+                    </responsiveSteps>
+                    <h4 text="msg://ru.stnovator.finassist.view.detail/identity" colspan="2" />
+                    <textField id="usernameField" property="username" readOnly="true" colspan="2" />
+                    <passwordField id="passwordField" label="msg://ru.stnovator.finassist.entity/User.password" required="true" visible="false" />
+                    <passwordField id="confirmPasswordField" label="msg://confirmPassword" required="true" visible="false" />
+                    <h4 text="msg://ru.stnovator.finassist.view.detail/personal" colspan="2" />
+                    <textField id="firstNameField" property="firstName" />
+                    <textField id="lastNameField" property="lastName" />
+                    <textField id="emailField" property="email" />
+                    <h4 text="msg://ru.stnovator.finassist.view.detail/preferences" colspan="2" />
+                    <comboBox id="timeZoneField" property="timeZoneId" clearButtonVisible="true" />
+                    <checkbox id="activeField" property="active" />
+                </formLayout>
+            </vbox>
+        </scroller>
+        <hbox id="detailActions" classNames="detail-actions" width="100%">
+            <button id="saveAndCloseBtn" action="saveAction" text="msg://ru.stnovator.finassist.view.detail/saveClose" />
+            <button id="closeBtn" action="closeAction" />
         </hbox>
     </layout>
 </view>
