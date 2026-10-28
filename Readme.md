@@ -7,10 +7,13 @@ This README describes the application as it is implemented now, not the broader 
 ## Technology
 
 - Java 21
-- Jmix 2.8.1 / Spring Boot 3 / Vaadin Flow UI
-- PostgreSQL
-- Jmix Reports add-on
-- Gradle
+- Jmix 3.1.0, with Spring Boot 4.1.1 and Vaadin 25.3.0 managed by the Jmix BOM
+- PostgreSQL (16 in Docker Compose and CI)
+- Jmix Reports, REST API, authorization server, security, audit, data tools, and local file storage add-ons
+- Gradle 9.8.0 via the repository wrapper
+- pnpm for frontend dependencies; overrides are maintained in `pnpm-workspace.yaml`
+
+The application uses the StroyNovator theme with a bundled Roboto font. The configured UI locale is Russian (`ru`).
 
 ## Current Functional Scope
 
@@ -23,6 +26,7 @@ The system currently supports:
 - shipment schedule corrections by addendum and project
 - payment schedule corrections by addendum and project
 - two XLSX reports available from the contract list view
+- a home dashboard with navigation and permission-aware customer, contract, and project totals
 
 The system does not currently implement:
 
@@ -132,6 +136,14 @@ There is a unique constraint per `(addendum, project)` for each correction type,
 
 ## UI Surface
 
+### Home And Detail Editors
+
+The home view provides customer, contract, and project navigation tiles and record totals. Counts load independently in background tasks through `DashboardCountService`, respect the current user's permissions and soft deletion, and can be refreshed. Loading is canceled when leaving the view. A welcome notification includes the authenticated user's name.
+
+Detail editors use responsive forms, scrollable content, and persistent action footers. Required fields remain visually neutral before interaction; validation still runs on interaction and save.
+
+### Menu And Views
+
 The main menu currently contains these sections:
 
 - Contract work
@@ -176,7 +188,7 @@ Both correction detail views contain helper logic:
 
 ## Business Logic Implemented Today
 
-There is no dedicated application service layer yet. The implemented business logic is concentrated in Flow UI controllers and report beans.
+`service/DashboardCountService` provides secured record counts for the home dashboard. Schedule editing logic remains in Flow UI controllers, and report calculations remain in report beans.
 
 Current logic includes:
 
@@ -241,29 +253,90 @@ Compared with the earlier product vision, the current codebase has these importa
 - no fact registration entities or UI
 - no plan-vs-fact comparison in the data model
 - no automatic schedule recalculation service
-- no background jobs or notifications
-- no dedicated business services package yet
+- no scheduled milestone monitoring or overdue notifications (dashboard background tasks and the welcome notification are implemented)
 - report logic is implemented directly in report beans rather than in reusable domain services
+
+Remaining work is tracked in [GitHub Issues](https://github.com/vfadeevGit/fin-assist/issues), including payment-date recalculation, duplicate-correction UX, related-record navigation, affected-project summaries, addendum reporting, and contract date validation.
 
 ## Running Locally
 
-Run the application in development mode:
+Install JDK 21 and provide a running PostgreSQL database. The default datasource in `src/main/resources/application.properties` points to `jdbc:postgresql://localhost/finassist`, using username `postgres` and password `admin`. Create the database before startup; Liquibase applies the schema changelogs automatically.
+
+Run with the included Gradle wrapper:
 
 ```bash
 ./gradlew bootRun
 ```
 
-The default development login is:
+The `bootRun` task activates the `dev` profile. Open **http://localhost:8090**; automatic browser launch is disabled. The default development login is `admin` / `admin`.
 
-- username: `admin`
-- password: `admin`
+To use a different local database, set `MAIN_DATASOURCE_URL`, `MAIN_DATASOURCE_USERNAME`, and `MAIN_DATASOURCE_PASSWORD` in the process environment before running the command.
 
-## Deployment Notes
+### Runtime Profiles
 
-The repository also contains:
+| Setting | Local development | Production container |
+| --- | --- | --- |
+| Spring profile | `dev` through `bootRun` | `prod` through Docker Compose |
+| Application port | `8090` | `8080`, matching the Nginx upstream |
+| Database configuration | `main.datasource.*`, overridable with `MAIN_DATASOURCE_*` | `DB_VENDOR`, `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` |
+| File storage | Jmix default unless overridden | `/storage`, backed by a Docker volume |
 
-- a production-oriented `Dockerfile`
-- Docker Compose files under `docker/`
-- an HTTPS deployment guide in `docker/DEPLOY.md`
+Production overrides are in `src/main/resources/application-prod.properties`. The Compose configuration supplies the database variables and exposes the application through Nginx on ports 80/443.
 
-For container deployment, use the Docker-specific documents rather than this README as the source of truth.
+## Testing And Production Build
+
+The test suite includes JUnit tests, Spring Boot integration tests, and Jmix UI tests. Integration and UI tests require PostgreSQL; there is no separate test datasource configuration in the repository. Point tests at a dedicated database, for example:
+
+```bash
+export MAIN_DATASOURCE_URL=jdbc:postgresql://localhost:5432/finassist_test
+export MAIN_DATASOURCE_USERNAME=postgres
+export MAIN_DATASOURCE_PASSWORD='<test-database-password>'
+./gradlew test
+```
+
+Create `finassist_test` first. Liquibase initializes its schema. Test reports are written to `build/reports/tests/test/index.html`.
+
+Run an individual test class:
+
+```bash
+./gradlew test --tests 'ru.stnovator.finassist.report.ListOfContractsTest'
+```
+
+Deployment-script tests require Python 3:
+
+```bash
+python3 -m unittest discover -s scripts/tests -v
+```
+
+Build the application with the production frontend bundle:
+
+```bash
+./gradlew bootJar -Pvaadin.productionMode=true
+```
+
+The resulting JAR is under `build/libs/`. The multi-stage [Dockerfile](Dockerfile) builds the production bundle with Java 21 and runs the application as a non-root user.
+
+## CI/CD And Deployment
+
+The [CI and Docker delivery workflow](.github/workflows/delivery.yml) runs on pull requests, pushes to `main`, and manual dispatches:
+
+| Trigger | Tests | Docker image | Production deployment |
+| --- | --- | --- | --- |
+| Pull request | Deployment scripts and application, with PostgreSQL 16 | Build only | No |
+| Push to `main` | Same checks | Build and publish | No |
+| Manual run on `main` | Same checks | Build and publish | Only with `deploy=true` |
+
+Images are published to `vfadeevdocker/fin-assist` with the tag `sha-<commit SHA>`. Production deployment uses the published image digest. Manual runs also accept `no_cache=true` to rebuild Docker layers without the build cache; both manual inputs default to `false`.
+
+To deploy from GitHub, open **Actions → CI and Docker delivery → Run workflow**, select `main`, and enable `deploy`. The workflow uses the `production` environment and the restricted SSH deployment entrypoint. It updates the application container, reloads Nginx, and verifies `/login` through local and public HTTPS checks. Deployment preserves database and storage volumes; a failed health check does not automatically roll back the database.
+
+Required GitHub secrets:
+
+- `DOCKERHUB_TOKEN` for image publication
+- `PRODUCTION_SSH_KEY` and `PRODUCTION_KNOWN_HOSTS` for deployment
+
+Optional variables are `DOCKERHUB_USERNAME`, `DEPLOY_HOST`, and `DEPLOY_PORT`. The workflow defines their defaults. A separate [Check Docker Hub access workflow](.github/workflows/registry-check.yml) verifies registry authentication and access to an existing image without publishing or deploying.
+
+Production URL: **https://fin-assist.st-novator.ru**.
+
+See [docker/DEPLOY.md](docker/DEPLOY.md) for server and certificate setup, [docker/docker-compose.yml](docker/docker-compose.yml) for runtime services, and [scripts/install-production-deploy.sh](scripts/install-production-deploy.sh) for installation of the restricted deployment entrypoint. The delivery workflow is the source of truth for automated release triggers and image tags.
