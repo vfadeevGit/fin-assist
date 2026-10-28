@@ -8,7 +8,7 @@
             <fetchPlan extends="_base"/>
             <loader id="contractsDl" readOnly="true">
                 <query>
-                    <![CDATA[select e from Contract e order by e.startDate desc]]>
+                    <![CDATA[select e from Contract e order by e.startDate desc, e.internalID, e.id]]>
                 </query>
             </loader>
         </collection>
@@ -48,6 +48,7 @@
                 <action id="runReportAction" type="report_runReport"/>
             </actions>
             <columns resizable="true">
+                <column key="relatedDetails" frozen="true" sortable="false" flexGrow="0" width="3em"/>
                 <column property="internalID"/>
                 <column property="startDate"/>
                 <column property="endDate"/>

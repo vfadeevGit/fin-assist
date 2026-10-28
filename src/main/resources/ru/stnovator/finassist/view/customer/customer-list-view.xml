@@ -8,7 +8,7 @@
             <fetchPlan extends="_base"/>
             <loader id="customersDl" readOnly="true">
                 <query>
-                    <![CDATA[select e from Customer e order by e.name]]>
+                    <![CDATA[select e from Customer e order by e.name, e.id]]>
                 </query>
             </loader>
         </collection>
@@ -46,6 +46,7 @@
                 <action id="remove" type="list_remove"/>
             </actions>
             <columns resizable="true">
+                <column key="relatedDetails" frozen="true" sortable="false" flexGrow="0" width="3em"/>
                 <column property="name"/>
 <!--                <column property="inn"/>-->
 <!--                <column property="kpp"/>-->

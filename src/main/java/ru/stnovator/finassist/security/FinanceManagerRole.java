@@ -17,6 +17,9 @@ public interface FinanceManagerRole {
     @ViewPolicy(viewIds = {"Contract.list", "Addendum.list", "Customer.list", "Project.list", "PaymentSchedule.list", "ShipmentSchedule.list", "PaymentScheduleCorrection.list", "ShipmentScheduleCorrection.list", "LineOfBusiness.list", "report_Report.list", "report_ReportRunView", "report_ReportGroup.list", "datatl_entityInspectorListView", "datatl_dataModelListView"})
     void screens();
 
+    @ViewPolicy(viewIds = {"Contract.detail", "Project.detail"})
+    void relatedRecordDetails();
+
     @EntityAttributePolicy(entityClass = Addendum.class, attributes = "*", action = EntityAttributePolicyAction.MODIFY)
     @EntityPolicy(entityClass = Addendum.class, actions = EntityPolicyAction.ALL)
     void addendum();
