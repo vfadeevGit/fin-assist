@@ -18,6 +18,8 @@ import io.jmix.reports.entity.ReportOutputType;
 import io.jmix.reports.yarg.loaders.ReportDataLoader;
 import io.jmix.reportsflowui.role.ReportsRunRole;
 import ru.stnovator.finassist.entity.Addendum;
+import ru.stnovator.finassist.service.ContractTerms;
+import ru.stnovator.finassist.service.ContractTermsService;
 import ru.stnovator.finassist.entity.Contract;
 import ru.stnovator.finassist.entity.Customer;
 import ru.stnovator.finassist.entity.PaymentScheduleCorrectionItem;
@@ -163,11 +165,14 @@ public class ListOfContracts {
     private final DataManager dataManager;
     private final MetadataTools metadataTools;
     private final Messages messages;
+    private final ContractTermsService contractTermsService;
 
-    public ListOfContracts(DataManager dataManager, MetadataTools metadataTools, Messages messages) {
+    public ListOfContracts(DataManager dataManager, MetadataTools metadataTools, Messages messages,
+                           ContractTermsService contractTermsService) {
         this.dataManager = dataManager;
         this.metadataTools = metadataTools;
         this.messages = messages;
+        this.contractTermsService = contractTermsService;
     }
 
     @DataSetDelegate(name = "header")
@@ -226,7 +231,7 @@ public class ListOfContracts {
                 if (project == null || !project.getContract().getCustomer().getId().equals(customerId)) {
                     return List.of();
                 }
-                return List.of(createContractRow(project.getContract(), params));
+                return createContractRows(List.of(project.getContract()), params);
             }
 
             if (selectedContract != null) {
@@ -234,7 +239,7 @@ public class ListOfContracts {
                 if (contract == null || !contract.getCustomer().getId().equals(customerId)) {
                     return List.of();
                 }
-                return List.of(createContractRow(contract, params));
+                return createContractRows(List.of(contract), params);
             }
 
             List<Contract> contracts = dataManager.load(Contract.class)
@@ -246,7 +251,7 @@ public class ListOfContracts {
                     .parameter("customerId", customerId)
                     .list();
 
-            return contracts.stream().map(contract -> createContractRow(contract, params)).toList();
+            return createContractRows(contracts, params);
         };
     }
 
@@ -336,16 +341,25 @@ public class ListOfContracts {
         return map;
     }
 
-    private Map<String, Object> createContractRow(Contract contract, Map<String, Object> params) {
+    private List<Map<String, Object>> createContractRows(List<Contract> contracts, Map<String, Object> params) {
+        Map<UUID, ContractTerms> terms = getRequiredContractListMode(params) == ContractListMode.ACTUAL_WITH_ADDENDUMS
+                ? contractTermsService.calculateAll(contracts.stream().map(Contract::getId).toList(), getReportDate(params))
+                : Map.of();
+        return contracts.stream().map(contract -> createContractRow(contract, params,
+                terms.getOrDefault(contract.getId(), new ContractTerms(contract.getTotalAmount(), contract.getEndDate()))))
+                .toList();
+    }
+
+    private Map<String, Object> createContractRow(Contract contract, Map<String, Object> params, ContractTerms terms) {
         Addendum selectedAddendum = resolveSelectedAddendum(contract, params);
 
         Map<String, Object> map = new HashMap<>();
         map.put("contractId", contract.getId());
         map.put("contractInternalID", contract.getInternalID());
         map.put("contractStartDate", contract.getStartDate());
-        map.put("contractEndDate", contract.getEndDate());
+        map.put("contractEndDate", terms.endDate());
         map.put("paymentType", contract.getPaymentType() == null ? "" : messages.getMessage(contract.getPaymentType()));
-        map.put("totalAmount", contract.getTotalAmount());
+        map.put("totalAmount", terms.totalAmount());
         map.put("selectedAddendumId", selectedAddendum == null ? null : selectedAddendum.getId());
         map.put("addendumInfoLabel", selectedAddendum == null
                 ? ""

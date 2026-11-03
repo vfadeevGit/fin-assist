@@ -7,6 +7,17 @@ import com.vaadin.flow.component.Component;
 import com.vaadin.flow.router.QueryParameters;
 import com.vaadin.flow.router.Route;
 import io.jmix.core.DataManager;
+import io.jmix.core.EntityStates;
+import io.jmix.flowui.component.textfield.TypedTextField;
+import io.jmix.flowui.component.datepicker.TypedDatePicker;
+import io.jmix.flowui.model.InstanceContainer;
+import io.jmix.flowui.view.Target;
+import com.vaadin.flow.component.html.Span;
+import ru.stnovator.finassist.service.ContractTermsService;
+import ru.stnovator.finassist.service.ContractTermsException;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.Set;
 import io.jmix.flowui.ViewNavigators;
 import io.jmix.flowui.component.valuepicker.EntityPicker;
 import io.jmix.flowui.facet.UrlQueryParametersFacet;
@@ -50,6 +61,19 @@ public class AddendumDetailView extends StandardDetailView<Addendum> {
     @Autowired
     private ViewNavigators viewNavigators;
 
+    @Autowired
+    private ContractTermsService contractTermsService;
+    @Autowired
+    private EntityStates entityStates;
+    @ViewComponent
+    private TypedTextField<BigDecimal> amountBeforeField;
+    @ViewComponent
+    private TypedTextField<BigDecimal> amountAfterField;
+    @ViewComponent
+    private TypedDatePicker<LocalDate> endDateAfterField;
+    @ViewComponent
+    private Span termsHint;
+
     private java.util.UUID parentContractId;
     private String returnTo;
     private boolean contractContextApplied;
@@ -77,6 +101,41 @@ public class AddendumDetailView extends StandardDetailView<Addendum> {
     @Subscribe
     public void onReady(final ReadyEvent event) {
         applyContractContextIfNeeded();
+        if (!entityStates.isNew(getEditedEntity())) contractField.setReadOnly(true);
+        refreshTerms();
+    }
+
+    @Subscribe(id = "addendumDc", target = Target.DATA_CONTAINER)
+    public void onAddendumPropertyChange(InstanceContainer.ItemPropertyChangeEvent<Addendum> event) {
+        if (Set.of("contract", "effectiveDate", "amountAdjustment", "newEndDate").contains(event.getProperty())) {
+            refreshTerms();
+        }
+    }
+
+    private void refreshTerms() {
+        try {
+            var preview = contractTermsService.preview(getEditedEntity());
+            amountBeforeField.setTypedValue(preview.before().totalAmount());
+            amountAfterField.setTypedValue(preview.after().totalAmount());
+            endDateAfterField.setValue(preview.after().endDate());
+            termsHint.setVisible(false);
+        } catch (ContractTermsException e) {
+            amountBeforeField.clear();
+            amountAfterField.clear();
+            endDateAfterField.clear();
+            termsHint.setText(e.getMessage());
+            termsHint.setVisible(true);
+        }
+    }
+
+    @Subscribe
+    public void onValidation(ValidationEvent event) {
+        if (getEditedEntity().getContract() == null || getEditedEntity().getEffectiveDate() == null) return;
+        try {
+            contractTermsService.preview(getEditedEntity());
+        } catch (ContractTermsException e) {
+            event.getErrors().add(e.getMessage());
+        }
     }
 
     private void applyContractContextIfNeeded() {

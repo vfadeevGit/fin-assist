@@ -38,9 +38,15 @@
                     </entityPicker>
                     <textField id="numberField" property="number" />
                     <datePicker id="effectiveDateField" property="effectiveDate" />
+                    <textField id="amountBeforeField" datatype="decimal" readOnly="true" label="msg://amountBefore" />
+                    <textField id="amountAdjustmentField" property="amountAdjustment" valueChangeMode="EAGER" helperText="msg://amountAdjustmentHelp" />
+                    <textField id="amountAfterField" datatype="decimal" readOnly="true" label="msg://amountAfter" />
+                    <datePicker id="newEndDateField" property="newEndDate" />
+                    <datePicker id="endDateAfterField" readOnly="true" label="msg://endDateAfter" />
                     <entityPicker property="contract.customer" readOnly="true" required="false" classNames="detail-context-field">
                 </entityPicker>
                 </formLayout>
+                <span id="termsHint" text="msg://ru.stnovator.finassist.service/termsInputRequired" />
                 <h4 text="msg://ru.stnovator.finassist.view.detail/corrections" />
                 <tabSheet id="correctionsTabs" width="100%">
                     <tab id="shipmentCorrectionsTab" label="msg://ru.stnovator.finassist.view.detail/shipments">

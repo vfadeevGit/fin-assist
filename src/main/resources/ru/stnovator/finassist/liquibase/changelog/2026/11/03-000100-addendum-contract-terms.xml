@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+    <changeSet id="1" author="finassist">
+        <preConditions onFail="HALT" onFailMessage="Resolve duplicate active addendum dates and negative contract amounts before upgrading.">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM (SELECT CONTRACT_ID, EFFECTIVE_DATE FROM ADDENDUM WHERE DELETED_DATE IS NULL GROUP BY CONTRACT_ID, EFFECTIVE_DATE HAVING COUNT(*) &gt; 1) duplicates</sqlCheck>
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM CONTRACT WHERE SUM_TOTAL &lt; 0 AND DELETED_DATE IS NULL</sqlCheck>
+        </preConditions>
+        <addColumn tableName="ADDENDUM">
+            <column name="AMOUNT_ADJUSTMENT" type="decimal(19,2)"/>
+            <column name="NEW_END_DATE" type="date"/>
+        </addColumn>
+        <createIndex tableName="ADDENDUM" indexName="IDX_ADDENDUM_CONTRACT_DATE">
+            <column name="CONTRACT_ID"/>
+            <column name="EFFECTIVE_DATE"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>
