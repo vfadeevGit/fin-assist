@@ -18,6 +18,7 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedBy;
 import org.springframework.data.annotation.LastModifiedDate;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -76,6 +77,29 @@ public class Addendum {
     @Column(name = "EFFECTIVE_DATE", nullable = false)
     @NotNull
     private LocalDate effectiveDate;
+
+    @Column(name = "AMOUNT_ADJUSTMENT", precision = 19, scale = 2)
+    @jakarta.validation.constraints.Digits(integer = 17, fraction = 2)
+    private BigDecimal amountAdjustment;
+
+    @Column(name = "NEW_END_DATE")
+    private LocalDate newEndDate;
+
+    public BigDecimal getAmountAdjustment() {
+        return amountAdjustment;
+    }
+
+    public void setAmountAdjustment(BigDecimal amountAdjustment) {
+        this.amountAdjustment = amountAdjustment;
+    }
+
+    public LocalDate getNewEndDate() {
+        return newEndDate;
+    }
+
+    public void setNewEndDate(LocalDate newEndDate) {
+        this.newEndDate = newEndDate;
+    }
 
     @Composition
     @OnDelete(DeletePolicy.CASCADE)

@@ -47,6 +47,7 @@ The report supports two user-facing calculation modes:
   - Used only for:
     - printing the header value
     - selecting the contract-level active addendum in `ACTUAL_WITH_ADDENDUMS`
+    - calculating cumulative contract amount and effective end date in `ACTUAL_WITH_ADDENDUMS`
   - Not used to filter cashflow rows by date.
 
 - `contractListMode` (`ENUMERATION`)
@@ -241,7 +242,8 @@ Actual consequences:
 
 - a missing correction side falls back independently to its base schedule; the other correction side is still applied
 - the contract header may still show the selected addendum, while the project row shows `Источник данных: База`
-- contract total amount still comes from `Contract.totalAmount`; it is not recalculated from correction data
+- in actual mode, contract amount and end date come from `ContractTermsService` on `reportDate`; signed addendum adjustments accumulate independently of schedule corrections
+- in base mode, amount and end date remain the original `Contract` values
 
 ### Filter mismatch returns empty output
 
@@ -271,9 +273,17 @@ The implemented logic does not:
 - limit cashflow rows by `reportDate`
 - combine base and correction items within the same schedule (shipment or payment)
 - select different addenda per project
-- recalculate contract amount based on addendum corrections
+- derive contract amount from shipment/payment schedule corrections
 - calculate deltas
 
 ## Regression Acceptance Case
 
 For contract `2026-02-15-ФАСАД`, project `Оформление фасада заводоуправления`, addendum `2026-04` effective 2026-04-01, report date 2026-10-27 in actual mode: shipment 789000 moves from 2026-03-01 to 2026-04-01; base payments remain unchanged. Shipment total is 7189000 and payment total is 30780000. Base mode retains the March shipment date.
+
+## Contract Amount and End Date
+
+In `ACTUAL_WITH_ADDENDUMS`, `ContractTermsService.calculateAll` computes the original amount plus all non-null `Addendum.amountAdjustment` values with `effectiveDate <= reportDate`. The last non-null `newEndDate` replaces the original end date. Deleted and future addenda are excluded; an addendum without one of these changes preserves the earlier value. Zero is a valid amount; a negative chain state is rejected on save.
+
+The dataset keys remain `totalAmount` and `contractEndDate`, and the existing XLSX template already displays both. `BASE` keeps original terms and remains the default mode. The schedule-selection algorithm is unchanged: a later addendum without schedules can still cause the existing fallback to base schedules. Partial history hidden by access policies produces a calculation error, not a misleading partial total.
+
+Detailed rules and implementation plan: [addendum-contract-terms.md](addendum-contract-terms.md).

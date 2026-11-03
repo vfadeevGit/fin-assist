@@ -134,6 +134,13 @@ Liquibase changelogs are in `src/main/resources/**/liquibase/changelog/**.xml`:
 - View: XML + Java pair; menu updated
 - Security: role covers entity/view/menu
 
+## Git Worktree Location
+
+- Create new worktrees directly under `/Users/v.fadeev/IdeaProjects`, alongside the main project.
+- Use `/Users/v.fadeev/IdeaProjects/fin-assist-<feature-slug>` as the default path (for example, `/Users/v.fadeev/IdeaProjects/fin-assist-contract-terms`).
+- Do not create worktrees inside this repository, including `.worktrees/` or `worktrees/`. This explicit preference overrides skill defaults and any existing nested worktree directories.
+- Keep existing worktrees in place unless the user asks to move them.
+
 ## Development Workflow
 
 After writing or modifying code, validate using this sequence:

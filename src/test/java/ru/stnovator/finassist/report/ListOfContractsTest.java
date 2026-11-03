@@ -45,6 +45,9 @@ class ListOfContractsTest {
     @Autowired
     ListOfContracts listOfContracts;
 
+    @Autowired
+    io.jmix.reports.runner.ReportRunner reportRunner;
+
     private final List<Object> cleanupEntities = new ArrayList<>();
 
     @AfterEach
@@ -58,6 +61,79 @@ class ListOfContractsTest {
             }
         }
         cleanupEntities.clear();
+    }
+
+    @Test
+    void actualTermsAccumulateIndependentlyOfSchedulesAndBaseIsUnchanged() {
+        ContractFixture f = createFixture("terms");
+        f.contract.setTotalAmount(new BigDecimal("1000000"));
+        dataManager.save(f.contract);
+        var first = createAddendum(f.contract, "terms-1", LocalDate.of(2026, 2, 5));
+        first.setAmountAdjustment(new BigDecimal("200000")); dataManager.save(first);
+        createShipmentCorrectionItem(f.project, first, LocalDate.of(2026, 2, 6), 10);
+        var second = createAddendum(f.contract, "terms-2", LocalDate.of(2026, 3, 1));
+        second.setNewEndDate(LocalDate.of(2027, 3, 31)); dataManager.save(second);
+        var third = createAddendum(f.contract, "terms-3", LocalDate.of(2026, 4, 1));
+        third.setAmountAdjustment(new BigDecimal("-50000")); dataManager.save(third);
+        var future = createAddendum(f.contract, "terms-4", LocalDate.of(2026, 12, 1));
+        future.setAmountAdjustment(new BigDecimal("100000")); dataManager.save(future);
+        BandData band = new BandData("Customer"); band.addData("customerId", f.customer.getId());
+        var params = new java.util.HashMap<String, Object>();
+        params.put("reportDate", LocalDate.of(2026, 11, 3));
+        params.put("contractListMode", ContractListMode.ACTUAL_WITH_ADDENDUMS);
+        var row = listOfContracts.contractsDataLoader().loadData(null, band, params).getFirst();
+        assertThat((BigDecimal) row.get("totalAmount")).isEqualByComparingTo("1150000");
+        assertThat(row.get("contractEndDate")).isEqualTo(LocalDate.of(2027, 3, 31));
+        params.put("reportDate", LocalDate.of(2026, 3, 1));
+        row = listOfContracts.contractsDataLoader().loadData(null, band, params).getFirst();
+        assertThat((BigDecimal) row.get("totalAmount")).isEqualByComparingTo("1200000");
+        assertThat(row.get("contractEndDate")).isEqualTo(LocalDate.of(2027, 3, 31));
+        BandData contractBand = new BandData("Contract");
+        contractBand.addData("contractId", f.contract.getId());
+        contractBand.addData("selectedAddendumId", row.get("selectedAddendumId"));
+        var project = listOfContracts.projectsDataLoader().loadData(null, contractBand, params).getFirst();
+        assertThat(project.get("shipmentAddendumId")).isNull(); // Existing graph fallback is unchanged.
+        params.put("contractListMode", ContractListMode.BASE);
+        row = listOfContracts.contractsDataLoader().loadData(null, band, params).getFirst();
+        assertThat((BigDecimal) row.get("totalAmount")).isEqualByComparingTo("1000000");
+        assertThat(row.get("contractEndDate")).isEqualTo(f.contract.getEndDate());
+    }
+
+    @Test
+    void generatedXlsxContainsAdjustedAmountAndTermIncludingZero() throws Exception {
+        ContractFixture f = createFixture("xlsx-terms");
+        f.contract.setTotalAmount(new BigDecimal("1000000")); dataManager.save(f.contract);
+        var a = createAddendum(f.contract, "xlsx-1", LocalDate.of(2026, 2, 5));
+        a.setAmountAdjustment(new BigDecimal("-1000000"));
+        a.setNewEndDate(LocalDate.of(2027, 3, 31)); dataManager.save(a);
+        for (var mode : ContractListMode.values()) {
+            var document = reportRunner.byReportCode("list-of-contracts").withParams(Map.of(
+                    "contract", f.contract, "reportDate", LocalDate.of(2026, 11, 3), "contractListMode", mode)).run();
+            try (var workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook(
+                    new java.io.ByteArrayInputStream(document.getContent()))) {
+                var sheet = workbook.getSheetAt(0);
+                org.apache.poi.ss.usermodel.Cell amountCell = null;
+                org.apache.poi.ss.usermodel.Cell dateCell = null;
+                for (var row : sheet) {
+                    for (var cell : row) {
+                        if (cell.getCellType() == org.apache.poi.ss.usermodel.CellType.STRING
+                                && cell.getStringCellValue().equals(f.contract.getInternalID())) {
+                            // Locate the columns by the existing template headers, not fixed row offsets.
+                            for (var headerRow : sheet) for (var header : headerRow) {
+                                if (header.getCellType() != org.apache.poi.ss.usermodel.CellType.STRING) continue;
+                                if (header.getStringCellValue().equals("Сумма контракта")) amountCell = row.getCell(header.getColumnIndex());
+                                if (header.getStringCellValue().equals("Срок окончания")) dateCell = row.getCell(header.getColumnIndex());
+                            }
+                        }
+                    }
+                }
+                assertThat(amountCell).isNotNull();
+                assertThat(amountCell.getNumericCellValue()).isEqualTo(mode == ContractListMode.BASE ? 1000000d : 0d);
+                assertThat(dateCell).isNotNull();
+                assertThat(dateCell.getLocalDateTimeCellValue().toLocalDate()).isEqualTo(
+                        mode == ContractListMode.BASE ? f.contract.getEndDate() : LocalDate.of(2027, 3, 31));
+            }
+        }
     }
 
     @Test
