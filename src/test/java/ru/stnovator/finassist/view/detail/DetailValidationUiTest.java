@@ -63,7 +63,8 @@ class DetailValidationUiTest {
                 .withViewClass(viewClass).newEntity().navigate();
         io.jmix.flowui.view.View<?> view = UiTestUtils.getCurrentView();
         assertThat(view).isInstanceOf(viewClass);
-        assertThat(UiComponentUtils.getComponent(view, "detailScroller")).isNotNull();
+        assertThat(UiComponentUtils.getComponent(view, viewClass == ru.stnovator.finassist.view.addendum.AddendumDetailView.class
+                ? "correctionsTabs" : "detailScroller")).isNotNull();
         for (com.vaadin.flow.component.Component component : UiComponentUtils.getComponents(view)) {
             if (component instanceof com.vaadin.flow.component.HasValidation field) {
                 assertThat(field.isInvalid()).as("pristine field %s in %s", component.getId(), viewClass).isFalse();
