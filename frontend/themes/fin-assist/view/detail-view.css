@@ -57,3 +57,50 @@
 
 .detail-metadata-field::part(input-field) { border: none; background: transparent; box-shadow: none; padding: 0; }
 .detail-metadata-field::part(label) { font-size: var(--lumo-font-size-xs); }
+
+/* Addendum: one workspace per tab with persistent context and actions. */
+.addendum-identity {
+  flex: 0 0 auto;
+  padding: var(--lumo-space-s) var(--lumo-space-m);
+  overflow-wrap: anywhere;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.addendum-tabs { flex: 1 1 0; min-height: 0; min-width: 0; }
+.addendum-editor .addendum-tabs::part(content) { overflow: auto; padding: 0; }
+.addendum-tabs .detail-collection { box-sizing: border-box; padding: var(--lumo-space-m); }
+@media (max-width: 600px) {
+  .addendum-editor vaadin-tab { padding-inline: var(--lumo-space-s); }
+}
+
+/* Date comparisons remain bounded inside the Addendum tab. */
+.addendum-editor .correction-summary-grid { min-height: 11.5rem; }
+.addendum-editor .correction-comparison-details { padding: var(--lumo-space-m); box-sizing: border-box; min-width: 0; }
+.addendum-editor .correction-audit { color: var(--lumo-secondary-text-color); font-size: var(--lumo-font-size-s); }
+
+/* General: read each parameter left to right, then enter the next change. */
+.addendum-general { container-type: inline-size; }
+.addendum-terms { width: 100%; }
+.addendum-terms-headings,
+.addendum-terms-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr);
+}
+.addendum-terms-headings {
+  font-weight: 600;
+  color: var(--lumo-secondary-text-color);
+  border-bottom: 1px solid var(--lumo-contrast-10pct);
+}
+.addendum-terms-headings > span { padding: var(--lumo-space-m); }
+.addendum-terms-row { border-bottom: 1px solid var(--lumo-contrast-10pct); }
+.addendum-terms-cell { min-width: 0; padding: var(--lumo-space-m); }
+.addendum-terms-cell > * { width: 100%; min-width: 0; }
+.addendum-terms-input { background: var(--lumo-base-color); }
+.addendum-terms-preview::part(input-field) { background: transparent; border: none; box-shadow: none; }
+.addendum-terms-preview::part(toggle-button) { display: none; }
+.addendum-terms-result::part(input-field) { font-weight: 600; }
+@container (max-width: 52rem) {
+  .addendum-terms-headings { display: none; }
+  .addendum-terms-row { grid-template-columns: minmax(0, 1fr); padding-block: var(--lumo-space-s); }
+  .addendum-terms-cell { padding: var(--lumo-space-s) var(--lumo-space-m); }
+}
