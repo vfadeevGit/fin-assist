@@ -11,12 +11,25 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest
+@SpringBootTest(properties = "OPENAI_MODEL=gpt-4o-mini")
 class AiToolsConfigurationTest {
     @Autowired AvailableEntityService entities;
     @Autowired SystemAuthenticator authenticator;
     @Autowired AiChatSystemPromptProvider prompt;
     @Autowired ApplicationContext context;
+    @Autowired org.springframework.ai.openai.OpenAiChatModel chatModel;
+
+    @Test
+    void defaultModelRequestOmitsUnsupportedReasoningEffort() {
+        var options = chatModel.getOptions();
+        assertThat(options.getModel()).isEqualTo("gpt-4o-mini");
+        var request = org.springframework.test.util.ReflectionTestUtils
+                .<com.openai.models.chat.completions.ChatCompletionCreateParams>invokeMethod(
+                        chatModel, "createRequest",
+                        new org.springframework.ai.chat.prompt.Prompt("Hello", options), false);
+        assertThat(request).isNotNull();
+        assertThat(request.reasoningEffort()).isEmpty();
+    }
 
     @Test
     void excludesInternalEntitiesEvenForAdministrators() {
