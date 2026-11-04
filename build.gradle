@@ -18,9 +18,22 @@ repositories {
     maven {
         url = 'https://global.repo.jmix.io/repository/public'
     }
+    maven {
+        url = 'https://global.repo.jmix.io/repository/premium'
+        credentials {
+            username = rootProject['premiumRepoUser']
+            password = rootProject['premiumRepoPass']
+        }
+    }
 }
 
 dependencies {
+    implementation 'io.jmix.aitools:jmix-aitools-flowui-starter'
+    implementation 'io.jmix.aitools:jmix-aitools-flowui-data-starter'
+    implementation 'io.jmix.aitools:jmix-aitools-starter'
+    implementation 'io.jmix.aichat:jmix-aichat-flowui-starter'
+    implementation 'org.springframework.ai:spring-ai-starter-model-openai'
+
     implementation 'com.vaadin:vaadin-dev'
     implementation 'io.jmix.rest:jmix-rest-starter'
     implementation 'io.jmix.authserver:jmix-authserver-starter'

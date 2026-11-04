@@ -130,6 +130,44 @@ class MainDashboardUiTest {
         assertThat(tasks).hasSize(3);
     }
 
+    @Test void assistantCardShowsIdentityAndOpensChatHub() {
+        MainView main = adminHome();
+        var card = io.jmix.flowui.component.UiComponentUtils.findComponent(main, "assistantCard");
+        assertThat(card).isPresent();
+        assertThat(card.orElseThrow().isVisible()).isTrue();
+        assertThat(card.orElseThrow().getElement().getTextRecursively())
+                .contains("Захар", "Финансовый менеджер", "Помогу найти клиентов");
+        assertThat(button(main, "askAssistantButton").getText()).isEqualTo("Спросить Захара");
+        assertThat(((io.jmix.flowui.kit.component.button.JmixButton) button(main, "askAssistantButton")).getTitle())
+                .isEqualTo("Открыть чат с финансовым помощником");
+        button(main, "askAssistantButton").click();
+        assertThat((Object) getCurrentView()).isInstanceOf(io.jmix.aitoolsflowui.view.chathub.AiChatHubView.class);
+        assertThat(home()).isSameAs(main);
+        assertThat(card.orElseThrow().isVisible()).isTrue();
+    }
+
+    @Test void assistantCardIsHiddenWithoutChatPermission() {
+        DashboardFixtures.authenticate(fixtures.alice, "ROLE_finance-manager-role");
+        MainView main = home();
+        var card = io.jmix.flowui.component.UiComponentUtils.findComponent(main, "assistantCard");
+        assertThat(card).isPresent();
+        assertThat(card.orElseThrow().isVisible()).isFalse();
+        assertThat(button(main, "askAssistantButton").isEnabled()).isFalse();
+    }
+
+    @Test void chatOnlyAccessDoesNotShowAnEmptyDashboardMessage() {
+        DashboardFixtures.authenticate(fixtures.alice, "ROLE_ui-minimal", "ROLE_dashboard-test-chat");
+        MainView main = home();
+        var card = io.jmix.flowui.component.UiComponentUtils.findComponent(main, "assistantCard");
+        assertThat(card).isPresent();
+        assertThat(card.orElseThrow().isVisible()).isTrue();
+        assertThat(((Component) getComponent(main, "dashboardEmptyMessage")).isVisible()).isFalse();
+        assertThat(tasks).isEmpty();
+    }
+
+    @ResourceRole(name="Test chat access", code="dashboard-test-chat", scope=SecurityScope.UI)
+    public interface ChatAccess { @ViewPolicy(viewIds="aitls_AiChatHubView") void policy(); }
+
     @ParameterizedTest
     @CsvSource({"customers,false,false", "customers,true,false", "customers,false,true", "customers,true,true",
             "contracts,false,false", "contracts,true,false", "contracts,false,true", "contracts,true,true",
