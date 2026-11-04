@@ -1,6 +1,7 @@
 .jmix
 
 backup
+/.env
 /docker/.env
 /docker/.env.*
 !/docker/.env.example
@@ -38,7 +39,6 @@ vite.generated.ts
 webpack.generated.js
 
 # Specifications and temprorary files
-.spec
 tmp/
 
 .DS_Store

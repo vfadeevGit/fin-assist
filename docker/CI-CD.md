@@ -20,6 +20,8 @@ In repository **Settings → Secrets and variables → Actions**, add:
 
 | Type | Name | Value |
 | --- | --- | --- |
+| Secret | `JMIX_PREMIUM_REPO_USER` | Jmix premium Maven repository username |
+| Secret | `JMIX_PREMIUM_REPO_PASSWORD` | Jmix premium Maven repository password |
 | Secret | `DOCKERHUB_TOKEN` | Docker Hub personal access token with read/write permission for the image repository |
 | Variable (optional) | `DOCKERHUB_USERNAME` | `vfadeevdocker` is the default |
 
@@ -43,6 +45,14 @@ Obtain the SSH host key fingerprint through the Timeweb console or an already tr
 session. Compare it with `ssh-keyscan -p 22 2.59.42.251` before saving the matching key
 entry as `PRODUCTION_KNOWN_HOSTS`. The workflow requires host verification and does not
 automatically trust a newly scanned key.
+
+The test step passes Jmix credentials as Gradle project environment variables. The
+Docker build uses BuildKit secret mounts; credentials are not build arguments or
+image environment variables. Tests use a dummy OpenAI key and must not call the
+live model. The real `OPENAI_API_KEY` belongs only in the server's `docker/.env`.
+Fork and Dependabot pull requests do not receive these repository secrets, so the
+premium dependency build requires a trusted branch run. Do not use
+`pull_request_target` to execute untrusted code with credentials.
 
 ## Prepare the existing VPS once
 
@@ -100,6 +110,35 @@ Expected: `Restricted deployment configuration is ready; no services changed`.
 Certbot's entrypoint correction and hourly Nginx reload have already been applied on the
 VPS separately. Keep `/etc/cron.d/finassist-nginx-reload` in place.
 
+## AI Tools rollout on the existing VPS
+
+Before deploying the first AI-enabled image, an administrator must:
+
+1. Back up `/root/docker/.env` and `/root/docker/docker-compose.yml` with mode 600.
+2. Preserve the actual `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, image tag
+   and digest, volumes, and certificate account. Do not copy the local template over
+   the existing server environment. Changing `POSTGRES_*` does not reconfigure an
+   already initialized PostgreSQL volume.
+3. Confirm `DOMAIN=fin-assist.st-novator.ru`. Keep the existing certificate contact;
+   `LETSENCRYPT_EMAIL` is only used by the initial issuance command.
+4. Add `OPENAI_API_KEY` and optionally `OPENAI_MODEL=gpt-4o-mini` to the server `.env`.
+   Keep mode 600. Do not put the key in GitHub build arguments or the image.
+5. Add these entries under `services.finassist.environment` in the **server's**
+   Compose file, preserving its other settings:
+
+   ```yaml
+   OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in docker/.env}
+   OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+   ```
+
+6. Run `sudo -n /usr/local/sbin/finassist-deploy --check` as the deployment user.
+   Confirm the existing certificate-renewal service and
+   `/etc/cron.d/finassist-nginx-reload` remain in place.
+
+GitHub only invokes the installed deployment command with the image tag and digest.
+It does not upload Compose, `.env`, or deployment scripts. Merging a Compose change
+alone does not update the server configuration.
+
 ## Deploy
 
 After the workflow is merged into `main` and credentials are configured, open
@@ -147,7 +186,8 @@ python3 -m unittest discover -s scripts/tests -v
 bash -n scripts/deploy-production.sh
 bash -n scripts/install-production-deploy.sh
 actionlint .github/workflows/delivery.yml
-docker compose --env-file docker/.env.example -f docker/docker-compose.yml config --quiet
+POSTGRES_PASSWORD=validation-only OPENAI_API_KEY=validation-only APP_TAG=validation-only \
+  docker compose --env-file docker/.env.example -f docker/docker-compose.yml config --quiet
 ./gradlew test
 ```
 

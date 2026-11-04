@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                      http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd"
+        objectQuotingStrategy="QUOTE_ONLY_RESERVED_WORDS">
+    <changeSet id="1" author="fin-assist">
+        <dropForeignKeyConstraint baseTableName="work_sheet_detail"
+                                  constraintName="fk_work_sheet_detail_on_work_sheet"/>
+    </changeSet>
+    <changeSet id="2" author="fin-assist">
+        <dropForeignKeyConstraint baseTableName="work_sheet" constraintName="fk_work_sheet_on_project"/>
+    </changeSet>
+    <changeSet id="3" author="fin-assist">
+        <dropTable cascadeConstraints="true" tableName="work_sheet"/>
+    </changeSet>
+    <changeSet id="4" author="fin-assist">
+        <dropTable cascadeConstraints="true" tableName="work_sheet_detail"/>
+    </changeSet>
+</databaseChangeLog>

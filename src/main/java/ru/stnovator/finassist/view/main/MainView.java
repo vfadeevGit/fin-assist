@@ -47,6 +47,8 @@ public class MainView extends StandardMainView {
     @ViewComponent private MessageBundle messageBundle;
     @ViewComponent private Button dashboardRefreshButton;
     @ViewComponent private Span dashboardEmptyMessage;
+    @ViewComponent private Div assistantCard;
+    @ViewComponent private Div assistantIcon;
 
     private final EnumMap<DashboardFeature, Cards> cards = new EnumMap<>(DashboardFeature.class);
     private MainDashboardLoader dashboardLoader;
@@ -65,6 +67,10 @@ public class MainView extends StandardMainView {
                 ProjectListView.class, VaadinIcon.FOLDER_OPEN);
         dashboardRefreshButton.setIcon(VaadinIcon.REFRESH.create());
         dashboardRefreshButton.addClickListener(event1 -> refreshDashboard());
+        var chatIcon = VaadinIcon.COMMENT_ELLIPSIS.create();
+        chatIcon.getElement().setAttribute("aria-hidden", "true");
+        assistantIcon.getElement().setAttribute("aria-hidden", "true");
+        assistantIcon.add(chatIcon);
         addDetachListener(event1 -> cancelDashboardLoad());
     }
 
@@ -139,6 +145,9 @@ public class MainView extends StandardMainView {
             return;
         }
         Set<DashboardFeature> accessible = getAccessibleDashboardFeatures();
+        var chatAccess = new UiShowViewContext("aitls_AiChatHubView");
+        accessManager.applyRegisteredConstraints(chatAccess);
+        assistantCard.setVisible(chatAccess.isPermitted());
         cards.forEach((feature, card) -> {
             boolean visible = accessible.contains(feature);
             card.indicator().setVisible(visible);
@@ -146,7 +155,7 @@ public class MainView extends StandardMainView {
             card.count().setText(visible ? messageBundle.getMessage("dashboard.loading") : "");
             card.count().addClassName("dashboard-count-status");
         });
-        dashboardEmptyMessage.setVisible(accessible.isEmpty());
+        dashboardEmptyMessage.setVisible(accessible.isEmpty() && !assistantCard.isVisible());
         dashboardRefreshButton.setVisible(!accessible.isEmpty());
         dashboardRefreshButton.setEnabled(false);
         dashboardLoader.refresh(this, accessible, this::renderCount,

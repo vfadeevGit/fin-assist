@@ -3,6 +3,9 @@
           title="msg://MainView.title">
     <actions>
         <action id="logout" type="logout"/>
+        <action id="askAssistantAction" type="finassist_openAiTools"
+                text="msg://ru.stnovator.finassist.ai/openAiTools.text"
+                description="msg://ru.stnovator.finassist.ai/openAiTools.description"/>
     </actions>
     <appLayout>
         <navigationBar>
@@ -61,6 +64,16 @@
                     <button id="customersTile" classNames="dashboard-tile"/>
                     <button id="contractsTile" classNames="dashboard-tile"/>
                     <button id="projectsTile" classNames="dashboard-tile"/>
+                </div>
+                <div id="assistantCard" classNames="dashboard-assistant-card" visible="false">
+                    <div id="assistantIcon" classNames="dashboard-assistant-icon"/>
+                    <div classNames="dashboard-assistant-copy">
+                        <h3 text="msg://dashboard.assistant.name"/>
+                        <span text="msg://dashboard.assistant.role" classNames="dashboard-assistant-role"/>
+                        <p text="msg://dashboard.assistant.description"/>
+                    </div>
+                    <button id="askAssistantButton" action="askAssistantAction"
+                            themeNames="primary" classNames="dashboard-assistant-button"/>
                 </div>
             </div>
         </initialLayout>

@@ -203,6 +203,16 @@ The following are implementation choices rather than additional business require
 
 There are no unresolved business requirements from the interview. Implementation requires review of this written specification; no application code is changed by preparing it.
 
+## 13. Assistant card follow-up — 2026-11-04
+
+The approved assistant card appears below the three navigation tiles, inside the home-only initial layout. It introduces **Захар**, **Финансовый менеджер**, with the description «Помогу найти клиентов, разобраться в контрактах и графиках платежей.» and a single «Спросить Захара» button. A decorative chat icon, restrained accent background and existing Lumo theme tokens keep the card consistent with the dashboard. At narrow widths the button spans a separate row below the identity and description.
+
+The button reuses `finassist_openAiTools` and opens the existing chat hub without sending a prompt or creating a conversation. The card is visible only with permission to open `aitls_AiChatHubView`; the action also checks permission at execution. Chat-only access suppresses the dashboard's «Нет доступных разделов» message even when none of the three business sections is available. Existing business counts, navigation, role grants and home-only layout behavior are retained. Suggested-question chips remain outside this change.
+
+Automated coverage in `MainDashboardUiTest` checks identity and caption rendering, navigation and return, denied-access hiding, and chat-only access. The three new cases failed before the card was added and passed afterward. Final `clean test`: **146 tests, zero failures/errors/skips**, using disposable PostgreSQL and a dummy AI key.
+
+Per-file checks: `MainView.java` and `MainDashboardUiTest.java` compiled and passed UI integration tests; `main-view.xml` parsed and its component/action bindings loaded in those tests; `messages_ru.properties` resolved the card captions with no duplicate keys; `main-view.css` passed mechanical checks and is already imported by the active theme; this specification passed content/whitespace checks. IDE semantic inspection was unavailable. A temporary app started successfully on localhost:8091, but the browser switched away during login, so visual verification was stopped without touching the other page. **Styling is not browser-verified**, including narrow-screen layout. The temporary app and database were removed afterward.
+
 ## References
 
 - [Business Requirements Document](../business-requirements-document.md)

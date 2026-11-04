@@ -19,6 +19,9 @@
         </collection>
     </data>
     <actions>
+        <action id="aiToolsAction" type="finassist_openAiTools"
+                text="msg://ru.stnovator.finassist.ai/openAiTools.text"
+                description="msg://ru.stnovator.finassist.ai/openAiTools.description"/>
         <action id="selectAction" type="lookup_select"/>
         <action id="discardAction" type="lookup_discard"/>
     </actions>
@@ -38,6 +41,7 @@
             <button id="createBtn" action="addendaDataGrid.create"/>
             <button id="editBtn" action="addendaDataGrid.edit"/>
             <button id="removeBtn" action="addendaDataGrid.remove"/>
+            <button id="aiToolsBtn" action="aiToolsAction"/>
             <simplePagination id="pagination" dataLoader="addendaDl"/>
         </hbox>
         <dataGrid id="addendaDataGrid"

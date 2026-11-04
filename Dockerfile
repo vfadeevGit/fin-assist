@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM bellsoft/liberica-openjdk-debian:21 AS builder
 
 WORKDIR /workspace
@@ -11,7 +12,11 @@ COPY frontend ./frontend
 COPY src ./src
 
 RUN chmod +x gradlew
-RUN ./gradlew --no-daemon clean bootJar -x test -Pvaadin.productionMode=true -Dspring.profiles.active=${SPRING_PROFILES_ACTIVE}
+# Vaadin's production classpath scan exceeds Gradle's default 512 MiB heap.
+RUN --mount=type=secret,id=premium_repo_user,env=ORG_GRADLE_PROJECT_premiumRepoUser,required=true \
+    --mount=type=secret,id=premium_repo_password,env=ORG_GRADLE_PROJECT_premiumRepoPass,required=true \
+    ./gradlew --stacktrace --no-daemon '-Dorg.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m' \
+    clean bootJar -x test -Pvaadin.productionMode=true -Dspring.profiles.active=${SPRING_PROFILES_ACTIVE}
 RUN find build/libs -maxdepth 1 -name '*.jar' ! -name '*-plain.jar' -exec cp {} build/app.jar \;
 
 FROM bellsoft/liberica-openjre-debian:21

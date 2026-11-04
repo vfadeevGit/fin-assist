@@ -14,6 +14,9 @@
         </collection>
     </data>
     <actions>
+        <action id="aiToolsAction" type="finassist_openAiTools"
+                text="msg://ru.stnovator.finassist.ai/openAiTools.text"
+                description="msg://ru.stnovator.finassist.ai/openAiTools.description"/>
         <action id="selectAction" type="lookup_select"/>
         <action id="discardAction" type="lookup_discard"/>
     </actions>
@@ -34,6 +37,7 @@
             <button id="editBtn" action="contractsDataGrid.edit"/>
             <button id="removeBtn" action="contractsDataGrid.remove"/>
             <button id="runReportBtn" action="contractsDataGrid.runReportAction"/>
+            <button id="aiToolsBtn" action="aiToolsAction"/>
             <simplePagination id="pagination" dataLoader="contractsDl"/>
         </hbox>
         <dataGrid id="contractsDataGrid"

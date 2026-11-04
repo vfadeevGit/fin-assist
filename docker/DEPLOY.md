@@ -27,24 +27,30 @@ This setup is intended for a plain VPS deployment where:
 
 ## Environment
 
-1. Copy `docker/.env.example` to `docker/.env`.
+1. For a **new installation only**, copy `docker/.env.example` to `docker/.env`. On an existing VPS, preserve its `.env` and follow the AI Tools rollout in [CI-CD.md](CI-CD.md).
 2. Set `DOMAIN` to the production hostname.
 3. Set `LETSENCRYPT_EMAIL` to the email for certificate registration.
-4. Set `APP_IMAGE` and `APP_TAG` to the Docker Hub image and tag that should be deployed. The current default is `vfadeevdocker/fin-assist:0.0.3-SNAPSHOT-prod`.
-5. Set a strong `POSTGRES_PASSWORD`.
+4. Use `APP_IMAGE=vfadeevdocker/fin-assist`; set `APP_TAG=sha-<full commit>` and `APP_DIGEST=sha256:<digest>` from a successful GitHub image build. The template intentionally has no release selected.
+5. For a new database, set a strong `POSTGRES_PASSWORD`. On an existing installation, retain all three actual `POSTGRES_*` values; editing these variables does not change existing database credentials.
 6. Keep quotes around values that contain spaces, especially `JAVA_TOOL_OPTIONS`.
-7. Keep the application image on `linux/amd64`, because the current VPS target runs on AMD64.
+7. Set `OPENAI_API_KEY` for the application and optionally `OPENAI_MODEL` (default `gpt-4o-mini`). Run `chmod 600 docker/.env`.
+8. Keep the application image on `linux/amd64`, because the current VPS target runs on AMD64.
 
 ## Initial certificate issuance
 
 Run these commands from the repository root on the VPS:
 
 ```bash
-cp docker/.env.example docker/.env
+# Fresh installation only; do not overwrite an existing server environment.
+cp -n docker/.env.example docker/.env
+chmod 600 docker/.env
 vi docker/.env
 set -a
 . docker/.env
 set +a
+: "${DOMAIN:?Set the production hostname}"
+: "${LETSENCRYPT_EMAIL:?Set the real certificate contact email}"
+: "${APP_TAG:?Select a published image tag}"
 
 docker compose --env-file docker/.env \
   -f docker/docker-compose.yml \
@@ -53,7 +59,7 @@ docker compose --env-file docker/.env \
 
 docker compose --env-file docker/.env \
   -f docker/docker-compose.yml \
-  run --rm --entrypoint certbot certbot certonly \
+  run --rm --no-deps --entrypoint certbot certbot certonly \
   --webroot -w /var/www/certbot \
   --email "$LETSENCRYPT_EMAIL" \
   --agree-tos \
@@ -66,7 +72,7 @@ After the certificate is issued, switch to the final stack:
 ```bash
 docker compose --env-file docker/.env \
   -f docker/docker-compose.yml \
-  down
+  up -d --no-deps --force-recreate nginx
 
 docker compose --env-file docker/.env \
   -f docker/docker-compose.yml \
@@ -127,9 +133,21 @@ docker compose --env-file docker/.env -f docker/docker-compose.yml logs -f certb
 - the application can connect to PostgreSQL
 - files written by Jmix local storage appear in the `storage` volume
 
-## Current Production Image
+## Production image and certificate renewal
 
-Current expected production image:
+The deployed image is recorded in the **server's** `docker/.env` after a successful
+deployment: repository `vfadeevdocker/fin-assist`, a `sha-<commit>` tag and an exact
+digest, on `linux/amd64`. The template is not a record of the live deployment.
 
-- `vfadeevdocker/fin-assist:0.0.3-SNAPSHOT-prod`
-- platform: `linux/amd64`
+Certbot renews certificates in the existing `letsencrypt` volume every 12 hours,
+using the shared `/var/www/certbot` webroot. Nginx must reload to pick up renewed
+certificates. Preserve the existing server job `/etc/cron.d/finassist-nginx-reload`.
+For a fresh VPS, install an equivalent hourly root cron job running:
+
+```bash
+/usr/bin/docker compose --env-file /root/docker/.env -f /root/docker/docker-compose.yml exec -T nginx nginx -s reload
+```
+
+These paths assume the production checkout is `/root`, as required by the restricted
+deployment command. Validate HTTPS and renewal on the VPS before considering a new
+installation ready.
