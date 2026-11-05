@@ -48,8 +48,8 @@ automatically trust a newly scanned key.
 
 The test step passes Jmix credentials as Gradle project environment variables. The
 Docker build uses BuildKit secret mounts; credentials are not build arguments or
-image environment variables. Tests use a dummy OpenAI key and must not call the
-live model. The real `OPENAI_API_KEY` belongs only in the server's `docker/.env`.
+image environment variables. Tests use a dummy API key and must not call the
+live model. The real OpenRouter key (`OPENAI_API_KEY`) belongs only in the server's `docker/.env`.
 Fork and Dependabot pull requests do not receive these repository secrets, so the
 premium dependency build requires a trusted branch run. Do not use
 `pull_request_target` to execute untrusted code with credentials.
@@ -121,14 +121,14 @@ Before deploying the first AI-enabled image, an administrator must:
    already initialized PostgreSQL volume.
 3. Confirm `DOMAIN=fin-assist.st-novator.ru`. Keep the existing certificate contact;
    `LETSENCRYPT_EMAIL` is only used by the initial issuance command.
-4. Add `OPENAI_API_KEY` and optionally `OPENAI_MODEL=gpt-4o-mini` to the server `.env`.
+4. Add your OpenRouter key as `OPENAI_API_KEY` and optionally `OPENAI_MODEL=qwen/qwen3.8-flash` to the server `.env`.
    Keep mode 600. Do not put the key in GitHub build arguments or the image.
 5. Add these entries under `services.finassist.environment` in the **server's**
    Compose file, preserving its other settings:
 
    ```yaml
    OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in docker/.env}
-   OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+   OPENAI_MODEL: ${OPENAI_MODEL:-qwen/qwen3.8-flash}
    ```
 
 6. Run `sudo -n /usr/local/sbin/finassist-deploy --check` as the deployment user.
