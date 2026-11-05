@@ -33,7 +33,7 @@ This setup is intended for a plain VPS deployment where:
 4. Use `APP_IMAGE=vfadeevdocker/fin-assist`; set `APP_TAG=sha-<full commit>` and `APP_DIGEST=sha256:<digest>` from a successful GitHub image build. The template intentionally has no release selected.
 5. For a new database, set a strong `POSTGRES_PASSWORD`. On an existing installation, retain all three actual `POSTGRES_*` values; editing these variables does not change existing database credentials.
 6. Keep quotes around values that contain spaces, especially `JAVA_TOOL_OPTIONS`.
-7. Set `OPENAI_API_KEY` for the application and optionally `OPENAI_MODEL` (default `gpt-4o-mini`). Run `chmod 600 docker/.env`.
+7. Set `OPENAI_API_KEY` to your OpenRouter API key for the application and optionally `OPENAI_MODEL` (default `qwen/qwen3.8-flash`). Run `chmod 600 docker/.env`.
 8. Keep the application image on `linux/amd64`, because the current VPS target runs on AMD64.
 
 ## Initial certificate issuance

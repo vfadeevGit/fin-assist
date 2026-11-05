@@ -32,7 +32,7 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       SPRING_PROFILES_ACTIVE: prod
       OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in docker/.env}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      OPENAI_MODEL: ${OPENAI_MODEL:-qwen/qwen3.8-flash}
       JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS}
     volumes:
       - storage:/storage

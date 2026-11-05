@@ -42,3 +42,9 @@ webpack.generated.js
 tmp/
 
 .DS_Store
+
+# Local browser verification artifacts
+/.playwright-mcp/
+
+# Agent instructions backup
+/AGENTS.md.bak

@@ -11,7 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest(properties = "OPENAI_MODEL=gpt-4o-mini")
+@SpringBootTest
 class AiToolsConfigurationTest {
     @Autowired AvailableEntityService entities;
     @Autowired SystemAuthenticator authenticator;
@@ -20,9 +20,9 @@ class AiToolsConfigurationTest {
     @Autowired org.springframework.ai.openai.OpenAiChatModel chatModel;
 
     @Test
-    void defaultModelRequestOmitsUnsupportedReasoningEffort() {
+    void defaultQwenFlashRequestOmitsReasoningEffort() {
         var options = chatModel.getOptions();
-        assertThat(options.getModel()).isEqualTo("gpt-4o-mini");
+        assertThat(options.getModel()).isEqualTo("qwen/qwen3.8-flash");
         var request = org.springframework.test.util.ReflectionTestUtils
                 .<com.openai.models.chat.completions.ChatCompletionCreateParams>invokeMethod(
                         chatModel, "createRequest",
