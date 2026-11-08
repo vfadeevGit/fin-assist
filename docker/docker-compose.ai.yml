@@ -1,0 +1,7 @@
+# Installed once on the VPS; deployment always combines this with its existing Compose.
+services:
+  finassist:
+    environment:
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:?Set OPENAI_BASE_URL}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY}
+      OPENAI_MODEL: ${OPENAI_MODEL:?Set OPENAI_MODEL}

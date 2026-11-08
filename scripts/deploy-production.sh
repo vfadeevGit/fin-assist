@@ -15,8 +15,8 @@ domain=$5
     exit 2
 }
 cd -- "$deploy_dir"
-[[ -f docker/.env && -f docker/docker-compose.yml ]] || {
-    echo "Existing docker/.env and docker/docker-compose.yml are required" >&2
+[[ -f docker/.env && -f docker/docker-compose.yml && -f docker/docker-compose.ai.yml ]] || {
+    echo "Existing docker/.env and both Compose files are required; rerun the deployment installer" >&2
     exit 2
 }
 grep -q 'APP_DIGEST' docker/docker-compose.yml || {
@@ -25,7 +25,7 @@ grep -q 'APP_DIGEST' docker/docker-compose.yml || {
 }
 command -v python3 >/dev/null
 command -v curl >/dev/null
-compose=(docker compose --env-file docker/.env -f docker/docker-compose.yml)
+compose=(docker compose --env-file docker/.env -f docker/docker-compose.yml -f docker/docker-compose.ai.yml)
 "${compose[@]}" config --quiet
 # Pull before replacing the running application. Preserve all existing volumes.
 "${compose[@]}" pull finassist
@@ -69,8 +69,12 @@ finally:
     if os.path.exists(backup_name):
         os.unlink(backup_name)
 values = {key: os.environ[key] for key in ("APP_IMAGE", "APP_TAG", "APP_DIGEST")}
-lines = [line for line in path.read_text().splitlines()
-         if not re.match(r"^\s*(?:export\s+)?(?:APP_IMAGE|APP_TAG|APP_DIGEST)\s*=", line)]
+ai_keys = ("OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL")
+if all(key in os.environ for key in ai_keys):
+    # The restricted entrypoint validated these values; single quotes preserve literal $.
+    values.update({key: "'" + os.environ[key] + "'" for key in ai_keys})
+pattern = r"^\s*(?:export\s+)?(?:" + "|".join(values) + r")\s*="
+lines = [line for line in path.read_text().splitlines() if not re.match(pattern, line)]
 lines.extend(f"{key}={value}" for key, value in values.items())
 fd, name = tempfile.mkstemp(dir=path.parent, prefix=".env.deploy-")
 try:

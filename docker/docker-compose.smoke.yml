@@ -20,8 +20,9 @@ services:
       DB_USER: finassist
       DB_PASSWORD: finassist
       SPRING_PROFILES_ACTIVE: prod
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://ai2mee.ru/api}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY for the smoke run}
-      OPENAI_MODEL: ${OPENAI_MODEL:-qwen/qwen3.8-flash}
+      OPENAI_MODEL: ${OPENAI_MODEL:?Set OPENAI_MODEL to an OpenWebUI model ID}
       JAVA_TOOL_OPTIONS: -Xmx1024m
     ports:
       - "8080:8080"

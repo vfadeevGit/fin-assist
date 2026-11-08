@@ -18,11 +18,12 @@ class AiToolsConfigurationTest {
     @Autowired AiChatSystemPromptProvider prompt;
     @Autowired ApplicationContext context;
     @Autowired org.springframework.ai.openai.OpenAiChatModel chatModel;
+    @Autowired org.springframework.core.env.Environment environment;
 
     @Test
-    void defaultQwenFlashRequestOmitsReasoningEffort() {
+    void configuredModelRequestOmitsReasoningEffort() {
         var options = chatModel.getOptions();
-        assertThat(options.getModel()).isEqualTo("qwen/qwen3.8-flash");
+        assertThat(options.getModel()).isEqualTo(environment.getRequiredProperty("OPENAI_MODEL"));
         var request = org.springframework.test.util.ReflectionTestUtils
                 .<com.openai.models.chat.completions.ChatCompletionCreateParams>invokeMethod(
                         chatModel, "createRequest",

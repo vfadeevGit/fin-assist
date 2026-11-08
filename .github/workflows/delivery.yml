@@ -65,17 +65,21 @@ jobs:
         env:
           POSTGRES_PASSWORD: validation-only
           OPENAI_API_KEY: validation-only
+          OPENAI_MODEL: validation-only
           APP_TAG: validation-only
         run: |
           docker compose --env-file docker/.env.example -f docker/docker-compose.yml config --quiet
           docker compose --env-file docker/.env.example -f docker/docker-compose.yml -f docker/docker-compose.init.yml config --quiet
           docker compose -f docker/docker-compose.smoke.yml config --quiet
+          OPENAI_BASE_URL=https://ai2mee.ru/api docker compose --env-file docker/.env.example -f docker/docker-compose.yml -f docker/docker-compose.ai.yml config --quiet
       - name: Test application
         env:
           ORG_GRADLE_PROJECT_premiumRepoUser: ${{ secrets.JMIX_PREMIUM_REPO_USER }}
           ORG_GRADLE_PROJECT_premiumRepoPass: ${{ secrets.JMIX_PREMIUM_REPO_PASSWORD }}
           # Context initialization only; tests must not call the live model.
           OPENAI_API_KEY: ci-test-placeholder
+          OPENAI_MODEL: ci-test-model
+          OPENAI_BASE_URL: http://127.0.0.1:9/api
         run: |
           : "${ORG_GRADLE_PROJECT_premiumRepoUser:?Set repository secret JMIX_PREMIUM_REPO_USER}"
           : "${ORG_GRADLE_PROJECT_premiumRepoPass:?Set repository secret JMIX_PREMIUM_REPO_PASSWORD}"
@@ -178,11 +182,19 @@ jobs:
           printf '%s\n' "$SSH_KNOWN_HOSTS" > "$RUNNER_TEMP/deploy-ssh/known_hosts"
           chmod 600 "$RUNNER_TEMP/deploy-ssh/"*
       - name: Deploy exact image
+        env:
+          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
         run: |
+          : "${OPENAI_BASE_URL:?Set production secret OPENAI_BASE_URL}"
+          : "${OPENAI_API_KEY:?Set production secret OPENAI_API_KEY}"
+          : "${OPENAI_MODEL:?Set production secret OPENAI_MODEL}"
           [[ "$IMAGE_TAG" =~ ^sha-[0-9a-f]{40}$ ]]
           [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
-          printf -v remote 'sudo -n /usr/local/sbin/finassist-deploy %q %q' \
+          printf -v remote 'sudo -n /usr/local/sbin/finassist-deploy --with-ai-config %q %q' \
             "$IMAGE_TAG" "$IMAGE_DIGEST"
+          python3 -c 'import json, os; print(json.dumps({k: os.environ[k] for k in ("OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL")}))' | \
           ssh -i "$RUNNER_TEMP/deploy-ssh/key" \
             -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile="$RUNNER_TEMP/deploy-ssh/known_hosts" \
