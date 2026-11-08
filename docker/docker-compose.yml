@@ -31,8 +31,9 @@ services:
       DB_USER: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       SPRING_PROFILES_ACTIVE: prod
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://ai2mee.ru/api}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in docker/.env}
-      OPENAI_MODEL: ${OPENAI_MODEL:-qwen/qwen3.8-flash}
+      OPENAI_MODEL: ${OPENAI_MODEL:?Set OPENAI_MODEL to an OpenWebUI model ID}
       JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS}
     volumes:
       - storage:/storage

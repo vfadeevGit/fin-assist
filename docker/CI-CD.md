@@ -33,6 +33,9 @@ In **Settings → Environments**, create `production`, restrict deployment branc
 | Variable (optional) | `DEPLOY_HOST` | Defaults to `2.59.42.251` |
 | Variable (optional) | `DEPLOY_PORT` | Defaults to `22` |
 | Secret | `PRODUCTION_SSH_KEY` | Dedicated CI SSH private key without a passphrase; corresponding public key goes in the VPS user's `authorized_keys` |
+| Secret | `OPENAI_BASE_URL` | OpenWebUI base URL, `https://ai2mee.ru/api` |
+| Secret | `OPENAI_MODEL` | Verified model ID, `gpt-5.2` |
+| Secret | `OPENAI_API_KEY` | OpenWebUI API key |
 | Secret | `PRODUCTION_KNOWN_HOSTS` | Verified SSH host public key entry for `2.59.42.251` (or the configured host and port) |
 
 Generate the dedicated key on a trusted machine, install its public key for the deployment
@@ -49,7 +52,7 @@ automatically trust a newly scanned key.
 The test step passes Jmix credentials as Gradle project environment variables. The
 Docker build uses BuildKit secret mounts; credentials are not build arguments or
 image environment variables. Tests use a dummy API key and must not call the
-live model. The real OpenRouter key (`OPENAI_API_KEY`) belongs only in the server's `docker/.env`.
+live model. The real OpenWebUI key is stored in GitHub's `production` environment secrets and the server's protected `docker/.env`, never in an image.
 Fork and Dependabot pull requests do not receive these repository secrets, so the
 premium dependency build requires a trusted branch run. Do not use
 `pull_request_target` to execute untrusted code with credentials.
@@ -73,8 +76,9 @@ premium dependency build requires a trusted branch run. Do not use
 
 ## Install restricted deployment access
 
-The installer must be run once as root from a trusted copy of these three files in one
-directory: `install-production-deploy.sh`, `restricted-deploy.py`, `deploy-production.sh`.
+The installer must be run once as root (and again when upgrading deployment code) from a trusted copy of
+`scripts/install-production-deploy.sh`, `scripts/restricted-deploy.py`,
+`scripts/deploy-production.sh` and `docker/docker-compose.ai.yml`, preserving this directory layout.
 For an uploaded archive, copy it into `/root` and verify its SHA-256 against the value from
 your trusted Mac **before** extracting or running it. Do not execute code directly from
 the deployment user's writable home directory as root.
@@ -86,7 +90,10 @@ bash /root/finassist-ci-setup/scripts/install-production-deploy.sh
 It installs:
 
 - `/usr/local/sbin/finassist-deploy`: root-owned isolated Python entrypoint; accepts
-  only a full `sha-<commit>` tag and `sha256:<digest>`, or the read-only `--check` operation.
+  a full `sha-<commit>` tag and `sha256:<digest>`, optionally preceded by `--with-ai-config`,
+  or the read-only `--check` operation. The flag reads a bounded JSON object from stdin
+  and allows only the three validated `OPENAI_*` variables.
+- `/root/docker/docker-compose.ai.yml`: protected AI-only override, applied by every deployment.
 - `/usr/local/lib/finassist/deploy-production.sh`: root-owned implementation, mode 700.
 - `/etc/sudoers.d/finassist-deploy`: passwordless access for `deploy` to that one command,
   with environment overrides disabled. The command also constructs a clean subprocess
@@ -98,7 +105,8 @@ The CI token can still replace the application and access its mounted applicatio
 protect production secrets and review application changes accordingly.
 
 The installer checks root ownership, validates Compose and sudoers, and does not restart
-containers or change group membership. Run from your Mac after installation:
+containers or change group membership. Once AI settings have been saved by the first deployment,
+run from your Mac to check persisted configuration:
 
 ```bash
 ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -i ~/.ssh/finassist-deploy \
@@ -112,32 +120,25 @@ VPS separately. Keep `/etc/cron.d/finassist-nginx-reload` in place.
 
 ## AI Tools rollout on the existing VPS
 
-Before deploying the first AI-enabled image, an administrator must:
+1. Back up the server `.env` and Compose files; preserve database settings, volumes and TLS certificates.
+2. Upgrade the installed deployment scripts and AI override using the root installer above.
+   The old entrypoint does not accept `--with-ai-config`; a repository merge alone cannot upgrade it.
+3. Set the three AI values in local `docker/.env` and upload only those values:
 
-1. Back up `/root/docker/.env` and `/root/docker/docker-compose.yml` with mode 600.
-2. Preserve the actual `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, image tag
-   and digest, volumes, and certificate account. Do not copy the local template over
-   the existing server environment. Changing `POSTGRES_*` does not reconfigure an
-   already initialized PostgreSQL volume.
-3. Confirm `DOMAIN=fin-assist.st-novator.ru`. Keep the existing certificate contact;
-   `LETSENCRYPT_EMAIL` is only used by the initial issuance command.
-4. Add your OpenRouter key as `OPENAI_API_KEY` and optionally `OPENAI_MODEL=qwen/qwen3.8-flash` to the server `.env`.
-   Keep mode 600. Do not put the key in GitHub build arguments or the image.
-5. Add these entries under `services.finassist.environment` in the **server's**
-   Compose file, preserving its other settings:
-
-   ```yaml
-   OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in docker/.env}
-   OPENAI_MODEL: ${OPENAI_MODEL:-qwen/qwen3.8-flash}
+   ```bash
+   python3 scripts/sync-openai-secrets.py --repo vfadeevGit/fin-assist
    ```
 
-6. Run `sudo -n /usr/local/sbin/finassist-deploy --check` as the deployment user.
-   Confirm the existing certificate-renewal service and
-   `/etc/cron.d/finassist-nginx-reload` remain in place.
+   This requires `gh auth login` and permission to manage secrets in the GitHub `production`
+   environment. The key is passed via stdin, never printed or included in CLI arguments.
+   Repeat this command whenever local AI settings change. No database credentials are uploaded.
+4. Run the manual production deployment from `main` after CI succeeds.
 
-GitHub only invokes the installed deployment command with the image tag and digest.
-It does not upload Compose, `.env`, or deployment scripts. Merging a Compose change
-alone does not update the server configuration.
+The workflow sends only these three settings as JSON over SSH stdin to the restricted
+entrypoint. The entrypoint rejects unknown variable names and multiline/unsafe values.
+A fixed AI-only Compose override supersedes any stale AI values in the server's base Compose.
+The existing `.env`, base Compose, database settings and volumes are not uploaded or replaced.
+Changes to server scripts/override still require the one-time administrator installation.
 
 ## Deploy
 
@@ -150,7 +151,7 @@ HTTPS on the VPS loopback interface with the real hostname and certificate, then
 runner checks the public endpoint. No Compose `down` or volume deletion is performed.
 
 After the VPS health check succeeds, `docker/.env` records `APP_IMAGE`, `APP_TAG` and
-`APP_DIGEST`. The previous environment file is saved as `docker/.env.previous`; both files
+`APP_DIGEST`, plus the three AI settings supplied for that deployment. The previous environment file is saved as `docker/.env.previous`; both files
 contain secrets, are ignored by Git, and are stored with mode 600. The build summary
 records the published tag and digest. A public endpoint check failure still fails the
 workflow, even if the server has already saved a healthy local deployment.
@@ -171,9 +172,9 @@ deploying schema changes; the workflow does not reverse migrations or restore da
   `docker/.env` (or restore `.env.previous` after a successful deployment), then run:
 
 ```bash
-docker compose --env-file docker/.env -f docker/docker-compose.yml pull finassist
-docker compose --env-file docker/.env -f docker/docker-compose.yml up -d --no-deps finassist
-docker compose --env-file docker/.env -f docker/docker-compose.yml exec -T nginx nginx -s reload
+docker compose --env-file docker/.env -f docker/docker-compose.yml -f docker/docker-compose.ai.yml pull finassist
+docker compose --env-file docker/.env -f docker/docker-compose.yml -f docker/docker-compose.ai.yml up -d --no-deps finassist
+docker compose --env-file docker/.env -f docker/docker-compose.yml -f docker/docker-compose.ai.yml exec -T nginx nginx -s reload
 curl --fail https://fin-assist.st-novator.ru/login --output /dev/null
 ```
 
@@ -186,7 +187,7 @@ python3 -m unittest discover -s scripts/tests -v
 bash -n scripts/deploy-production.sh
 bash -n scripts/install-production-deploy.sh
 actionlint .github/workflows/delivery.yml
-POSTGRES_PASSWORD=validation-only OPENAI_API_KEY=validation-only APP_TAG=validation-only \
+POSTGRES_PASSWORD=validation-only OPENAI_API_KEY=validation-only OPENAI_MODEL=validation-only APP_TAG=validation-only \
   docker compose --env-file docker/.env.example -f docker/docker-compose.yml config --quiet
 ./gradlew test
 ```

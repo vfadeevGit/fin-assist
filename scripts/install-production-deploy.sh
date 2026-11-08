@@ -23,7 +23,8 @@ for name in ("/root", "/root/docker", "/root/docker/.env", "/root/docker/docker-
     p = Path(name)
     if p.is_symlink() or not p.exists() or p.stat().st_uid != 0 or p.stat().st_mode & 0o022:
         raise SystemExit(f"Expected a root-owned, non-writable, non-symlink path: {name}")
-for name in ("/usr/local/lib/finassist", "/usr/local/lib/finassist/deploy-production.sh",
+for name in ("/root/docker/docker-compose.ai.yml",
+             "/usr/local/lib/finassist", "/usr/local/lib/finassist/deploy-production.sh",
              "/usr/local/sbin/finassist-deploy", "/etc/sudoers.d/finassist-deploy"):
     p = Path(name)
     if p.is_symlink() or (p.exists() and (p.stat().st_uid != 0 or p.stat().st_mode & 0o022)):
@@ -44,7 +45,9 @@ if new not in text:
         output.write(text.replace(old + '\n', new + '\n', 1))
     os.replace(name, p)
 PY
-docker compose --env-file /root/docker/.env -f /root/docker/docker-compose.yml config --quiet
+OPENAI_BASE_URL=https://ai2mee.ru/api OPENAI_API_KEY=validation-only OPENAI_MODEL=validation-only \
+    docker compose --env-file /root/docker/.env -f /root/docker/docker-compose.yml config --quiet
+install -o root -g root -m 600 "$source_dir/../docker/docker-compose.ai.yml" /root/docker/docker-compose.ai.yml
 install -d -o root -g root -m 755 /usr/local/lib/finassist
 install -o root -g root -m 700 "$source_dir/deploy-production.sh" /usr/local/lib/finassist/deploy-production.sh
 install -o root -g root -m 755 "$source_dir/restricted-deploy.py" /usr/local/sbin/finassist-deploy
@@ -55,5 +58,8 @@ printf '%s\n' 'deploy ALL=(root) NOPASSWD: NOSETENV: /usr/local/sbin/finassist-d
 visudo -cf "$rule"
 install -o root -g root -m 440 "$rule" /etc/sudoers.d/finassist-deploy
 visudo -c
-/usr/local/sbin/finassist-deploy --check
+# Validate the overlay wiring without requiring the first real key before deployment.
+OPENAI_BASE_URL=https://ai2mee.ru/api OPENAI_API_KEY=validation-only OPENAI_MODEL=validation-only \
+    docker compose --env-file /root/docker/.env -f /root/docker/docker-compose.yml \
+    -f /root/docker/docker-compose.ai.yml config --quiet
 echo "Installed restricted deployment access. No container was restarted."

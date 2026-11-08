@@ -21,6 +21,7 @@ class DeploymentTest(unittest.TestCase):
         self.env_file.write_text(self.original)
         (self.root / "docker/docker-compose.yml").write_text(
             'services:\n  finassist:\n    image: ${APP_IMAGE}:${APP_TAG}${APP_DIGEST:+@}${APP_DIGEST:-}\n')
+        (self.root / "docker/docker-compose.ai.yml").write_text("services: {}\n")
         self.bin = self.root / "bin"
         self.bin.mkdir()
         for name, code in {
@@ -38,7 +39,7 @@ if [[ "${FAIL_HEALTH:-}" == 1 ]]; then exit 22; fi
             path.chmod(0o755)
         self.calls = self.root / "calls"
         self.env = {**os.environ, "PATH": f"{self.bin}:{os.environ['PATH']}", "CALLS": str(self.calls)}
-        for name in ("APP_IMAGE", "APP_TAG", "APP_DIGEST"):
+        for name in ("APP_IMAGE", "APP_TAG", "APP_DIGEST", "OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL"):
             self.env.pop(name, None)
 
     def run_deploy(self, tag=TAG, digest=DIGEST):
@@ -59,6 +60,18 @@ if [[ "${FAIL_HEALTH:-}" == 1 ]]; then exit 22; fi
         self.assertIn("exec -T nginx nginx -s reload", calls)
         self.assertNotIn("down", calls)
 
+    def test_success_persists_ai_environment_without_changing_database_settings(self):
+        self.env.update(OPENAI_BASE_URL="https://ai2mee.ru/api", OPENAI_MODEL="gpt-5.2",
+                        OPENAI_API_KEY="test-key-$literal")
+        result = self.run_deploy()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        saved = self.env_file.read_text()
+        self.assertIn("OPENAI_MODEL='gpt-5.2'", saved)
+        self.assertIn("OPENAI_API_KEY='test-key-$literal'", saved)
+        self.assertIn('POSTGRES_PASSWORD="keep this secret"', saved)
+        self.assertIn("docker-compose.ai.yml", self.calls.read_text())
+        self.assertNotIn("test-key", result.stdout + result.stderr)
+
     def test_failed_pull_does_not_restart_or_save(self):
         self.env["FAIL_PULL"] = "1"
         result = self.run_deploy()
@@ -69,6 +82,7 @@ if [[ "${FAIL_HEALTH:-}" == 1 ]]; then exit 22; fi
 
     def test_failed_health_check_does_not_save_success(self):
         self.env["FAIL_HEALTH"] = "1"
+        self.env.update(OPENAI_BASE_URL="https://ai2mee.ru/api", OPENAI_MODEL="gpt-5.2", OPENAI_API_KEY="test-key")
         result = self.run_deploy()
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(self.env_file.read_text(), self.original)
