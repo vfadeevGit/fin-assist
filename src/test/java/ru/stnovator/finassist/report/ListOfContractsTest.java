@@ -92,7 +92,8 @@ class ListOfContractsTest {
         contractBand.addData("contractId", f.contract.getId());
         contractBand.addData("selectedAddendumId", row.get("selectedAddendumId"));
         var project = listOfContracts.projectsDataLoader().loadData(null, contractBand, params).getFirst();
-        assertThat(project.get("shipmentAddendumId")).isNull(); // Existing graph fallback is unchanged.
+        assertThat(project.get("shipmentAddendumId")).isEqualTo(first.getId());
+        assertThat(project.get("paymentAddendumId")).isNull();
         params.put("contractListMode", ContractListMode.BASE);
         row = listOfContracts.contractsDataLoader().loadData(null, band, params).getFirst();
         assertThat((BigDecimal) row.get("totalAmount")).isEqualByComparingTo("1000000");
@@ -106,6 +107,9 @@ class ListOfContractsTest {
         var a = createAddendum(f.contract, "xlsx-1", LocalDate.of(2026, 2, 5));
         a.setAmountAdjustment(new BigDecimal("-1000000"));
         a.setNewEndDate(LocalDate.of(2027, 3, 31)); dataManager.save(a);
+        createShipmentCorrectionItem(f.project, a, LocalDate.of(2026, 2, 6), 70);
+        var paymentSource = createAddendum(f.contract, "xlsx-payment", LocalDate.of(2026, 3, 1));
+        createPaymentCorrectionItem(f.project, paymentSource, LocalDate.of(2026, 3, 2), 120);
         for (var mode : ContractListMode.values()) {
             var document = reportRunner.byReportCode("list-of-contracts").withParams(Map.of(
                     "contract", f.contract, "reportDate", LocalDate.of(2026, 11, 3), "contractListMode", mode)).run();
@@ -114,8 +118,13 @@ class ListOfContractsTest {
                 var sheet = workbook.getSheetAt(0);
                 org.apache.poi.ss.usermodel.Cell amountCell = null;
                 org.apache.poi.ss.usermodel.Cell dateCell = null;
+                String sourceCaption = null;
                 for (var row : sheet) {
                     for (var cell : row) {
+                        if (cell.getCellType() == org.apache.poi.ss.usermodel.CellType.STRING
+                                && cell.getStringCellValue().equals("Источник данных:")) {
+                            sourceCaption = row.getCell(cell.getColumnIndex() + 1).getStringCellValue();
+                        }
                         if (cell.getCellType() == org.apache.poi.ss.usermodel.CellType.STRING
                                 && cell.getStringCellValue().equals(f.contract.getInternalID())) {
                             // Locate the columns by the existing template headers, not fixed row offsets.
@@ -127,6 +136,9 @@ class ListOfContractsTest {
                         }
                     }
                 }
+                if (mode == ContractListMode.BASE) assertThat(sourceCaption).isEqualTo("База");
+                else assertThat(sourceCaption).contains("Отгрузки: доп. соглашение №xlsx-1 от 05.02.2026",
+                        "оплаты: доп. соглашение №xlsx-payment от 01.03.2026");
                 assertThat(amountCell).isNotNull();
                 assertThat(amountCell.getNumericCellValue()).isEqualTo(mode == ContractListMode.BASE ? 1000000d : 0d);
                 assertThat(dateCell).isNotNull();
@@ -255,10 +267,11 @@ class ListOfContractsTest {
         Map<String, Object> projectRow = listOfContracts.projectsDataLoader()
                 .loadData(null, contractBand, Map.of(
                         "project", fixture.project,
+                        "reportDate", LocalDate.of(2026, 2, 15),
                         "contractListMode", ContractListMode.ACTUAL_WITH_ADDENDUMS
                 ))
                 .getFirst();
-        assertThat(projectRow.get("cashflowSource")).isEqualTo("Доп. соглашение");
+        assertThat((String) projectRow.get("cashflowSource")).contains("Отгрузки: доп. соглашение №A-02", "оплаты: доп. соглашение №A-02");
         assertThat(projectRow).containsEntry("shipmentAddendumId", contractRow.get("selectedAddendumId"))
                 .containsEntry("paymentAddendumId", contractRow.get("selectedAddendumId"));
 
@@ -324,9 +337,10 @@ class ListOfContractsTest {
             assertThat((BigDecimal) rows.get(1).get("shipmentSum")).isEqualByComparingTo(shipment ? String.valueOf(amount) : "0");
             assertThat((BigDecimal) rows.get(1).get("paymentSum")).isEqualByComparingTo(payment ? String.valueOf(amount) : "0");
         }
-        assertThat(project.get("cashflowSource")).isEqualTo(shipment
-                ? "Отгрузки: доп. соглашение; оплаты: база"
-                : payment ? "Отгрузки: база; оплаты: доп. соглашение" : "База");
+        assertThat((String) project.get("cashflowSource")).contains(shipment
+                ? "Отгрузки: доп. соглашение №A-04" : payment ? "Отгрузки: база" : "База");
+        if (payment) assertThat((String) project.get("cashflowSource")).contains("оплаты: доп. соглашение №A-04");
+        else if (shipment) assertThat((String) project.get("cashflowSource")).contains("оплаты: база");
     }
 
     @Test
@@ -341,9 +355,10 @@ class ListOfContractsTest {
         assertThat(projectRow(fixture, effective, ContractListMode.ACTUAL_WITH_ADDENDUMS).get("cashflowSource")).isEqualTo("База");
         createShipmentCorrectionItem(fixture.project, addendum, effective, 100);
         assertThat(projectRow(fixture, effective, ContractListMode.ACTUAL_WITH_ADDENDUMS).get("cashflowSource"))
-                .isEqualTo("Отгрузки: доп. соглашение; оплаты: база");
+                .asString().contains("Отгрузки: доп. соглашение №A-01", "оплаты: база");
         createPaymentCorrectionItem(fixture.project, addendum, effective, 40);
-        assertThat(projectRow(fixture, effective, ContractListMode.ACTUAL_WITH_ADDENDUMS).get("cashflowSource")).isEqualTo("Доп. соглашение");
+        assertThat((String) projectRow(fixture, effective, ContractListMode.ACTUAL_WITH_ADDENDUMS).get("cashflowSource"))
+                .contains("Отгрузки: доп. соглашение №A-01", "оплаты: доп. соглашение №A-01");
         assertThat(projectRow(fixture, effective.minusDays(1), ContractListMode.ACTUAL_WITH_ADDENDUMS).get("cashflowSource")).isEqualTo("База");
         assertThat(projectRow(fixture, effective, ContractListMode.BASE).get("cashflowSource")).isEqualTo("База");
     }
@@ -373,6 +388,78 @@ class ListOfContractsTest {
         assertThat((BigDecimal) rows.getFirst().get("paymentSum")).isEqualByComparingTo("250");
         assertThat(totals.get("shipmentTotal")).isEqualTo(rows.getFirst().get("shipmentSum"));
         assertThat(totals.get("paymentTotal")).isEqualTo(rows.getFirst().get("paymentSum"));
+    }
+
+    @Test
+    void retainsPaymentCorrectionAfterShipmentOnlyAddendum() {
+        assertIndependentHistory(true);
+    }
+
+    @Test
+    void retainsShipmentCorrectionAfterPaymentOnlyAddendum() {
+        assertIndependentHistory(false);
+    }
+
+    private void assertIndependentHistory(boolean paymentFirst) {
+        ContractFixture fixture = createFixture("history");
+        LocalDate firstDate = LocalDate.of(2026, 2, 10);
+        LocalDate secondDate = firstDate.plusDays(10);
+        createPaymentItem(fixture.paymentSchedule, firstDate, 100);
+        createShipmentItem(fixture.shipmentSchedule, firstDate, 50);
+        Addendum first = createAddendum(fixture.contract, "FIRST", firstDate);
+        Addendum second = createAddendum(fixture.contract, "SECOND", secondDate);
+        createPaymentCorrectionItem(fixture.project, paymentFirst ? first : second, firstDate, 120);
+        createShipmentCorrectionItem(fixture.project, paymentFirst ? second : first, firstDate, 70);
+        Addendum empty = createAddendum(fixture.contract, "EMPTY", secondDate.plusDays(1));
+        ShipmentScheduleCorrection shipment = dataManager.create(ShipmentScheduleCorrection.class);
+        shipment.setProject(fixture.project);
+        shipment.setAddendum(empty);
+        cleanupEntities.add(dataManager.save(shipment));
+        PaymentScheduleCorrection payment = dataManager.create(PaymentScheduleCorrection.class);
+        payment.setProject(fixture.project);
+        payment.setAddendum(empty);
+        cleanupEntities.add(dataManager.save(payment));
+        Project other = dataManager.create(Project.class);
+        other.setContract(fixture.contract);
+        other.setLineOfBusiness(fixture.project.getLineOfBusiness());
+        other.setName("Other history project");
+        other = dataManager.save(other);
+        cleanupEntities.add(other);
+        createPaymentCorrectionItem(other, empty, firstDate, 999);
+        createShipmentCorrectionItem(other, empty, firstDate, 999);
+        Addendum future = createAddendum(fixture.contract, "FUTURE", secondDate.plusDays(5));
+        createPaymentCorrectionItem(fixture.project, future, firstDate, 999);
+        createShipmentCorrectionItem(fixture.project, future, firstDate, 999);
+
+        assertHistoryRows(fixture, secondDate, ContractListMode.ACTUAL_WITH_ADDENDUMS,
+                70, 120, paymentFirst ? "SECOND" : "FIRST", paymentFirst ? "FIRST" : "SECOND");
+        assertHistoryRows(fixture, firstDate.minusDays(1), ContractListMode.ACTUAL_WITH_ADDENDUMS, 50, 100, "", "");
+        assertHistoryRows(fixture, firstDate, ContractListMode.ACTUAL_WITH_ADDENDUMS,
+                paymentFirst ? 50 : 70, paymentFirst ? 120 : 100, paymentFirst ? "" : "FIRST", paymentFirst ? "FIRST" : "");
+        assertHistoryRows(fixture, secondDate.minusDays(1), ContractListMode.ACTUAL_WITH_ADDENDUMS,
+                paymentFirst ? 50 : 70, paymentFirst ? 120 : 100, paymentFirst ? "" : "FIRST", paymentFirst ? "FIRST" : "");
+        assertHistoryRows(fixture, secondDate.plusDays(2), ContractListMode.ACTUAL_WITH_ADDENDUMS,
+                70, 120, paymentFirst ? "SECOND" : "FIRST", paymentFirst ? "FIRST" : "SECOND");
+        assertHistoryRows(fixture, secondDate.plusDays(2), ContractListMode.BASE, 50, 100, "", "");
+    }
+
+    private void assertHistoryRows(ContractFixture fixture, LocalDate reportDate, ContractListMode mode,
+                                   int shipment, int payment, String shipmentNumber, String paymentNumber) {
+        Map<String, Object> row = projectRow(fixture, reportDate, mode);
+        BandData band = projectBand(row);
+        List<Map<String, Object>> rows = listOfContracts.projectCashflowRecordsDataLoader().loadData(null, band, Map.of());
+        Map<String, Object> totals = listOfContracts.projectCashflowTotalsDataLoader().loadData(null, band, Map.of()).getFirst();
+        assertThat(rows).hasSize(1);
+        assertThat((BigDecimal) rows.getFirst().get("shipmentSum")).isEqualByComparingTo(String.valueOf(shipment));
+        assertThat((BigDecimal) rows.getFirst().get("paymentSum")).isEqualByComparingTo(String.valueOf(payment));
+        assertThat((BigDecimal) totals.get("shipmentTotal")).isEqualByComparingTo(String.valueOf(shipment));
+        assertThat((BigDecimal) totals.get("paymentTotal")).isEqualByComparingTo(String.valueOf(payment));
+        String label = (String) row.get("cashflowSource");
+        if (shipmentNumber.isEmpty() && paymentNumber.isEmpty()) assertThat(label).isEqualTo("База");
+        else {
+            assertThat(label).contains(shipmentNumber.isEmpty() ? "Отгрузки: база" : "Отгрузки: доп. соглашение №" + shipmentNumber);
+            assertThat(label).contains(paymentNumber.isEmpty() ? "оплаты: база" : "оплаты: доп. соглашение №" + paymentNumber);
+        }
     }
 
     private Map<String, Object> projectRow(ContractFixture fixture, LocalDate date, ContractListMode mode) {

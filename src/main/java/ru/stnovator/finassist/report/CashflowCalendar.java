@@ -20,22 +20,22 @@ import io.jmix.reportsflowui.role.ReportsRunRole;
 import ru.stnovator.finassist.entity.Addendum;
 import ru.stnovator.finassist.entity.Contract;
 import ru.stnovator.finassist.entity.Customer;
-import ru.stnovator.finassist.entity.PaymentScheduleCorrectionItem;
 import ru.stnovator.finassist.entity.PaymentScheduleItem;
 import ru.stnovator.finassist.entity.Project;
-import ru.stnovator.finassist.entity.ShipmentScheduleCorrectionItem;
 import ru.stnovator.finassist.entity.ShipmentScheduleItem;
 import ru.stnovator.finassist.view.contract.ContractListView;
+import ru.stnovator.finassist.ai.schedule.ScheduleImportTypes.Kind;
+import ru.stnovator.finassist.service.EffectiveScheduleService;
+import ru.stnovator.finassist.service.EffectiveScheduleService.Key;
+import ru.stnovator.finassist.service.EffectiveScheduleService.Snapshot;
 
 import java.math.BigDecimal;
 import java.text.MessageFormat;
 import java.time.LocalDate;
-import java.time.OffsetDateTime;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -43,6 +43,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @ReportDef(
         code = "cashflow-calendar",
@@ -137,20 +139,18 @@ public class CashflowCalendar {
     private static final Locale REPORT_LOCALE = Locale.forLanguageTag("ru");
     private static final DateTimeFormatter MONTH_FORMATTER = DateTimeFormatter.ofPattern("LLL yyyy", REPORT_LOCALE);
     private static final DateTimeFormatter ADDENDUM_DATE_FORMATTER = DateTimeFormatter.ofPattern("dd.MM.yyyy", REPORT_LOCALE);
-    private static final Comparator<AddendumCandidate> ADDENDUM_COMPARATOR = Comparator
-            .comparing(AddendumCandidate::effectiveDate, Comparator.nullsLast(Comparator.reverseOrder()))
-            .thenComparing(AddendumCandidate::createdDate, Comparator.nullsLast(Comparator.reverseOrder()))
-            .thenComparing(AddendumCandidate::number, Comparator.nullsLast(Comparator.reverseOrder()));
     private static final String SHIPMENT_MEASURE = "SHIPMENT";
     private static final String PAYMENT_MEASURE = "PAYMENT";
     private static final String PROJECT_ROW_KIND = "PROJECT";
 
     private final DataManager dataManager;
     private final Messages messages;
+    private final EffectiveScheduleService effectiveScheduleService;
 
-    public CashflowCalendar(DataManager dataManager, Messages messages) {
+    public CashflowCalendar(DataManager dataManager, Messages messages, EffectiveScheduleService effectiveScheduleService) {
         this.dataManager = dataManager;
         this.messages = messages;
+        this.effectiveScheduleService = effectiveScheduleService;
     }
 
     @DataSetDelegate(name = "header")
@@ -228,7 +228,8 @@ public class CashflowCalendar {
         LocalDate reportDate = getRequiredReportDate(params);
         CashflowCalendarMode calendarMode = getRequiredCalendarMode(params);
         List<ProjectContext> visibleProjects = loadVisibleProjects(params);
-        Map<MeasureProjectKey, MeasureSummary> baseSummaries = computeBaseProjectSummaries(visibleProjects, reportDate.getYear());
+        Map<MeasureProjectKey, MeasureSummary> baseSummaries = calendarMode == CashflowCalendarMode.BASE
+                ? computeBaseProjectSummaries(visibleProjects, reportDate.getYear()) : Map.of();
         List<ProjectSelection> selections = resolveProjectSelections(visibleProjects, reportDate, calendarMode, baseSummaries);
         Map<String, MeasureSummary> rowSummaries = computeRowSummaries(selections);
         Map<String, MeasureSummary> totalSummaries = computeTotalSummaries(rowSummaries);
@@ -304,32 +305,42 @@ public class CashflowCalendar {
             return selections;
         }
 
-        AddendumData addendumData = loadAddendumData(visibleProjects, reportDate);
+        Set<UUID> projectIds = visibleProjects.stream().map(ProjectContext::projectId).collect(Collectors.toSet());
+        Map<Key, Snapshot> snapshots = effectiveScheduleService.loadAll(projectIds, reportDate);
+        Set<UUID> addendumIds = snapshots.values().stream().map(Snapshot::sourceAddendumId)
+                .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+        Map<UUID, Addendum> addenda = addendumIds.isEmpty() ? Map.of() : dataManager.load(Addendum.class)
+                .query("select a from Addendum a where a.id in :ids")
+                .parameter("ids", addendumIds).list().stream()
+                .collect(Collectors.toMap(Addendum::getId, addendum -> addendum));
         for (ProjectContext project : visibleProjects) {
-            AddendumCandidate activeAddendum = addendumData.activeAddenda().get(project.projectId());
-            if (activeAddendum == null) {
-                selections.add(createBaseSelection(project, baseSummaries));
-                continue;
-            }
-
-            MeasureSummary shipmentSummary = addendumData.summaries()
-                    .get(new ProjectAddendumMeasureKey(project.projectId(), activeAddendum.addendumId(), SHIPMENT_MEASURE));
-            MeasureSummary paymentSummary = addendumData.summaries()
-                    .get(new ProjectAddendumMeasureKey(project.projectId(), activeAddendum.addendumId(), PAYMENT_MEASURE));
-            if (shipmentSummary == null || paymentSummary == null) {
-                selections.add(createBaseSelection(project, baseSummaries));
-                continue;
-            }
-
-            selections.add(new ProjectSelection(
-                    project,
-                    messages.getMessage("ru.stnovator.finassist.report.cashflowCalendar/planSourceAddendum"),
-                    formatAddendumInfo(activeAddendum),
-                    shipmentSummary,
-                    paymentSummary
-            ));
+            Snapshot shipment = snapshots.get(new Key(project.projectId(), Kind.SHIPMENT));
+            Snapshot payment = snapshots.get(new Key(project.projectId(), Kind.PAYMENT));
+            selections.add(new ProjectSelection(project,
+                    sourceLabel(shipment, addenda), sourceLabel(payment, addenda),
+                    summarize(shipment, reportDate.getYear()), summarize(payment, reportDate.getYear())));
         }
         return selections;
+    }
+
+    private SourceLabel sourceLabel(Snapshot snapshot, Map<UUID, Addendum> addenda) {
+        if (snapshot.sourceAddendumId() == null) {
+            return baseSourceLabel();
+        }
+        Addendum addendum = java.util.Objects.requireNonNull(addenda.get(snapshot.sourceAddendumId()),
+                "Selected schedule source is unavailable");
+        return new SourceLabel(messages.getMessage("ru.stnovator.finassist.report.cashflowCalendar/planSourceAddendum"),
+                formatAddendumInfo(addendum));
+    }
+
+    private SourceLabel baseSourceLabel() {
+        return new SourceLabel(messages.getMessage("ru.stnovator.finassist.report.cashflowCalendar/planSourceBase"), "");
+    }
+
+    private MeasureSummary summarize(Snapshot snapshot, int reportYear) {
+        MeasureSummary summary = MeasureSummary.empty();
+        snapshot.rows().forEach(row -> summary.add(row.date(), row.amount(), reportYear));
+        return summary;
     }
 
     private ProjectSelection createBaseSelection(
@@ -338,93 +349,10 @@ public class CashflowCalendar {
     ) {
         return new ProjectSelection(
                 project,
-                messages.getMessage("ru.stnovator.finassist.report.cashflowCalendar/planSourceBase"),
-                "",
+                baseSourceLabel(),
+                baseSourceLabel(),
                 baseSummaries.getOrDefault(new MeasureProjectKey(project.projectId(), SHIPMENT_MEASURE), MeasureSummary.empty()),
                 baseSummaries.getOrDefault(new MeasureProjectKey(project.projectId(), PAYMENT_MEASURE), MeasureSummary.empty())
-        );
-    }
-
-    private AddendumData loadAddendumData(List<ProjectContext> visibleProjects, LocalDate reportDate) {
-        Map<ProjectAddendumMeasureKey, MeasureSummary> correctionSummaries = new LinkedHashMap<>();
-        Map<ProjectAddendumKey, AddendumCandidate> addendumCandidates = new LinkedHashMap<>();
-        List<UUID> projectIds = visibleProjects.stream().map(ProjectContext::projectId).toList();
-
-        List<ShipmentScheduleCorrectionItem> shipmentItems = dataManager.load(ShipmentScheduleCorrectionItem.class)
-                .query("""
-                        select i from ShipmentScheduleCorrectionItem i
-                        where i.correction.project.id in :projectIds
-                          and i.correction.addendum.effectiveDate <= :reportDate
-                        order by i.correction.project.id,
-                                 i.correction.addendum.effectiveDate desc,
-                                 i.correction.addendum.createdDate desc,
-                                 i.correction.addendum.number desc,
-                                 i.itemDate
-                        """)
-                .parameter("projectIds", projectIds)
-                .parameter("reportDate", reportDate)
-                .list();
-        for (ShipmentScheduleCorrectionItem item : shipmentItems) {
-            UUID projectId = item.getCorrection().getProject().getId();
-            Addendum addendum = item.getCorrection().getAddendum();
-            registerAddendumCandidate(addendumCandidates, projectId, addendum);
-            correctionSummaries.computeIfAbsent(
-                            new ProjectAddendumMeasureKey(projectId, addendum.getId(), SHIPMENT_MEASURE),
-                            ignored -> MeasureSummary.empty())
-                    .add(item.getItemDate(), defaultAmount(item.getAmount()), reportDate.getYear());
-        }
-
-        List<PaymentScheduleCorrectionItem> paymentItems = dataManager.load(PaymentScheduleCorrectionItem.class)
-                .query("""
-                        select i from PaymentScheduleCorrectionItem i
-                        where i.correction.project.id in :projectIds
-                          and i.correction.addendum.effectiveDate <= :reportDate
-                        order by i.correction.project.id,
-                                 i.correction.addendum.effectiveDate desc,
-                                 i.correction.addendum.createdDate desc,
-                                 i.correction.addendum.number desc,
-                                 i.itemDate
-                        """)
-                .parameter("projectIds", projectIds)
-                .parameter("reportDate", reportDate)
-                .list();
-        for (PaymentScheduleCorrectionItem item : paymentItems) {
-            UUID projectId = item.getCorrection().getProject().getId();
-            Addendum addendum = item.getCorrection().getAddendum();
-            registerAddendumCandidate(addendumCandidates, projectId, addendum);
-            correctionSummaries.computeIfAbsent(
-                            new ProjectAddendumMeasureKey(projectId, addendum.getId(), PAYMENT_MEASURE),
-                            ignored -> MeasureSummary.empty())
-                    .add(item.getItemDate(), defaultAmount(item.getAmount()), reportDate.getYear());
-        }
-
-        Map<UUID, AddendumCandidate> activeAddenda = new LinkedHashMap<>();
-        for (ProjectContext project : visibleProjects) {
-            AddendumCandidate best = null;
-            for (Map.Entry<ProjectAddendumKey, AddendumCandidate> entry : addendumCandidates.entrySet()) {
-                if (!entry.getKey().projectId().equals(project.projectId())) {
-                    continue;
-                }
-                if (best == null || ADDENDUM_COMPARATOR.compare(entry.getValue(), best) < 0) {
-                    best = entry.getValue();
-                }
-            }
-            if (best != null) {
-                activeAddenda.put(project.projectId(), best);
-            }
-        }
-
-        return new AddendumData(activeAddenda, correctionSummaries);
-    }
-
-    private void registerAddendumCandidate(
-            Map<ProjectAddendumKey, AddendumCandidate> addendumCandidates,
-            UUID projectId,
-            Addendum addendum
-    ) {
-        addendumCandidates.putIfAbsent(
-                new ProjectAddendumKey(projectId, addendum.getId()),
-                new AddendumCandidate(addendum.getId(), addendum.getNumber(), addendum.getEffectiveDate(), addendum.getCreatedDate())
         );
     }
 
@@ -525,8 +453,9 @@ public class CashflowCalendar {
         row.put("projectName", project.projectName());
         row.put("measureCode", measureCode);
         row.put("measureName", measureName);
-        row.put("planSource", selection.planSource());
-        row.put("addendumInfo", selection.addendumInfo());
+        SourceLabel source = SHIPMENT_MEASURE.equals(measureCode) ? selection.shipmentSource() : selection.paymentSource();
+        row.put("planSource", source.planSource());
+        row.put("addendumInfo", source.addendumInfo());
         row.put("contractPlannedSum", defaultAmount(project.contractPlannedSum()));
         row.put("beforeYear", summary.beforeYear());
         row.put("afterYear", summary.afterYear());
@@ -646,9 +575,9 @@ public class CashflowCalendar {
         return Integer.parseInt(columnId.substring(columnId.length() - 2));
     }
 
-    private String formatAddendumInfo(AddendumCandidate addendum) {
+    private String formatAddendumInfo(Addendum addendum) {
         String pattern = messages.getMessage("ru.stnovator.finassist.report.cashflowCalendar/addendumInfoPattern");
-        return MessageFormat.format(pattern, addendum.number(), ADDENDUM_DATE_FORMATTER.format(addendum.effectiveDate()));
+        return MessageFormat.format(pattern, addendum.getNumber(), ADDENDUM_DATE_FORMATTER.format(addendum.getEffectiveDate()));
     }
 
     private BigDecimal defaultAmount(BigDecimal amount) {
@@ -669,8 +598,8 @@ public class CashflowCalendar {
 
     private record ProjectSelection(
             ProjectContext project,
-            String planSource,
-            String addendumInfo,
+            SourceLabel shipmentSource,
+            SourceLabel paymentSource,
             MeasureSummary shipmentSummary,
             MeasureSummary paymentSummary
     ) {
@@ -679,24 +608,7 @@ public class CashflowCalendar {
     private record MeasureProjectKey(UUID projectId, String measureCode) {
     }
 
-    private record ProjectAddendumKey(UUID projectId, UUID addendumId) {
-    }
-
-    private record ProjectAddendumMeasureKey(UUID projectId, UUID addendumId, String measureCode) {
-    }
-
-    private record AddendumCandidate(
-            UUID addendumId,
-            String number,
-            LocalDate effectiveDate,
-            OffsetDateTime createdDate
-    ) {
-    }
-
-    private record AddendumData(
-            Map<UUID, AddendumCandidate> activeAddenda,
-            Map<ProjectAddendumMeasureKey, MeasureSummary> summaries
-    ) {
+    private record SourceLabel(String planSource, String addendumInfo) {
     }
 
     private record CalendarContext(
