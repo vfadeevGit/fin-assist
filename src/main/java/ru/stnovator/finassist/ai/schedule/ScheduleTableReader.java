@@ -20,7 +20,12 @@ import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
 import java.nio.charset.CodingErrorAction;
+import java.time.DateTimeException;
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.format.ResolverStyle;
+import java.time.temporal.ChronoField;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -329,6 +334,7 @@ public class ScheduleTableReader {
     private boolean confirmedHeaderOrTotal(List<List<Value>> rows, int index, Mapping mapping) {
         Value date = value(rows.get(index), mapping.dateColumn());
         Value amount = value(rows.get(index), mapping.amountColumn());
+        if (mappedDate(date, mapping.formats())) return false;
         if (headerOrTotal(date, amount)) return true;
         // firstDataRow explicitly confirms source header labels, regardless of their language/wording.
         if (index < mapping.firstDataRow()) return headerLabel(date) && headerLabel(amount);
@@ -340,6 +346,19 @@ public class ScheduleTableReader {
                     && amount.raw().strip().equalsIgnoreCase(prefixAmount.raw().strip())) return true;
         }
         return false;
+    }
+
+    private boolean mappedDate(Value value, ParseOptions formats) {
+        try {
+            DateTimeFormatter formatter = formats == null ? DateTimeFormatter.ISO_LOCAL_DATE
+                    : new DateTimeFormatterBuilder().appendPattern(formats.datePattern())
+                    .parseDefaulting(ChronoField.ERA, 1).toFormatter(Locale.ROOT)
+                    .withResolverStyle(ResolverStyle.STRICT);
+            LocalDate.from(formatter.parse(value.raw().strip()));
+            return true;
+        } catch (DateTimeException | IllegalArgumentException ex) {
+            return false;
+        }
     }
 
     private boolean headerLabel(Value value) {

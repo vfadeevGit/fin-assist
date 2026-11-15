@@ -332,6 +332,26 @@ class ScheduleTableReaderTest {
                 "INVALID_EXCLUDED_ROW");
     }
 
+    @Test
+    void alphabeticMappedDateWithInvalidAmountCannotBeConfirmedAsPrefixHeader() {
+        byte[] bytes = "01 Dec 2026;broken\n02 Dec 2026;20".getBytes(StandardCharsets.UTF_8);
+        var formats = new ParseOptions("dd MMM uuuu", '.', '\0');
+        assertIssue(() -> reader.read(stream(bytes), "a.csv", new Mapping("csv", 0, 1, 1, Set.of(), formats)),
+                "INVALID_EXCLUDED_ROW");
+    }
+
+    @Test
+    void alphabeticMappedDateCannotBeExcludedAsARepeatedConfirmedHeader() {
+        byte[] bytes = "01 Dec 2026;broken\n02 Dec 2026;20\n01 Dec 2026;broken".getBytes(StandardCharsets.UTF_8);
+        var formats = new ParseOptions("dd MMM uuuu", '.', '\0');
+        assertThatThrownBy(() -> reader.read(stream(bytes), "a.csv",
+                new Mapping("csv", 0, 1, 1, Set.of(2), formats)))
+                .isInstanceOf(TableReadException.class)
+                .satisfies(error -> assertThat(((TableReadException) error).issues())
+                        .containsExactly(new Issue("csv!1", "INVALID_EXCLUDED_ROW"),
+                                new Issue("csv!3", "INVALID_EXCLUDED_ROW")));
+    }
+
     private Mapping mapping(String key, ParseOptions formats) {
         return new Mapping(key, 0, 1, 0, Set.of(), formats);
     }
