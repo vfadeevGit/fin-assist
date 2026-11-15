@@ -87,7 +87,7 @@ public class ScheduleTableReader {
             Value date = value(row, mapping.dateColumn());
             Value amount = value(row, mapping.amountColumn());
             if (index < mapping.firstDataRow() || mapping.excludedRows().contains(index)) {
-                if (!headerOrTotal(date, amount) || row.stream().anyMatch(Value::invalid)) {
+                if (!confirmedHeaderOrTotal(grid.rows(), index, mapping) || row.stream().anyMatch(Value::invalid)) {
                     issues.add(new Issue(source, "INVALID_EXCLUDED_ROW"));
                 }
                 continue;
@@ -98,7 +98,7 @@ public class ScheduleTableReader {
                 continue;
             }
             try {
-                result.add(new InputRow(dateText(date, mapping.formats()), amountText(amount, mapping.formats()), source));
+                result.add(new InputRow(dateText(date, mapping.formats()), amountText(amount, mapping.formats(), source), source));
             } catch (IllegalArgumentException ex) {
                 issues.add(new Issue(source, "INVALID_PARSE_OPTIONS"));
             }
@@ -257,15 +257,28 @@ public class ScheduleTableReader {
     private List<List<Value>> parseCsv(String text, char delimiter) throws IOException {
         // Guard record width before Commons CSV allocates a whole record. The library owns actual CSV semantics.
         boolean quoted = false;
+        boolean fieldStart = true;
         int columns = 1;
         for (int index = 0; index < text.length(); index++) {
             char c = text.charAt(index);
-            if (c == '"') {
-                if (quoted && index + 1 < text.length() && text.charAt(index + 1) == '"') index++;
-                else quoted = !quoted;
+            if (quoted) {
+                if (c == '"') {
+                    if (index + 1 < text.length() && text.charAt(index + 1) == '"') index++;
+                    else quoted = false;
+                }
+                continue;
             }
-            if (!quoted && c == delimiter && ++columns > limits.getMaxColumns()) throw failure("csv", "COLUMN_LIMIT");
-            if (!quoted && (c == '\n' || c == '\r')) columns = 1;
+            if (c == delimiter) {
+                if (++columns > limits.getMaxColumns()) throw failure("csv", "COLUMN_LIMIT");
+                fieldStart = true;
+            } else if (c == '\n' || c == '\r') {
+                columns = 1;
+                fieldStart = true;
+            } else {
+                // RFC4180 quotes open a quoted token only at its first character.
+                if (fieldStart && c == '"') quoted = true;
+                fieldStart = false;
+            }
         }
         var rows = new ArrayList<List<Value>>();
         int cells = 0;
@@ -295,10 +308,44 @@ public class ScheduleTableReader {
         return formats == null ? date.toString() : date.format(DateTimeFormatter.ofPattern(formats.datePattern(), Locale.ROOT));
     }
 
-    private String amountText(Value value, ParseOptions formats) {
+    private String amountText(Value value, ParseOptions formats, String source) {
         if (!value.type().equals("NUMERIC")) return value.raw();
-        String text = new BigDecimal(value.raw()).stripTrailingZeros().toPlainString();
+        BigDecimal number;
+        try {
+            number = new BigDecimal(value.raw());
+        } catch (NumberFormatException ex) {
+            throw failure(source, "AMOUNT_OVERFLOW");
+        }
+        // Check before stripping as well: its scale arithmetic can overflow on extreme exponents.
+        if (number.signum() != 0 && (long) number.precision() - number.scale() > 17) {
+            throw failure(source, "AMOUNT_OVERFLOW");
+        }
+        number = number.stripTrailingZeros();
+        if (number.scale() > 2) throw failure(source, "AMOUNT_SCALE");
+        String text = number.toPlainString();
         return formats == null ? text : text.replace('.', formats.decimalSeparator());
+    }
+
+    private boolean confirmedHeaderOrTotal(List<List<Value>> rows, int index, Mapping mapping) {
+        Value date = value(rows.get(index), mapping.dateColumn());
+        Value amount = value(rows.get(index), mapping.amountColumn());
+        if (headerOrTotal(date, amount)) return true;
+        // firstDataRow explicitly confirms source header labels, regardless of their language/wording.
+        if (index < mapping.firstDataRow()) return headerLabel(date) && headerLabel(amount);
+        for (int prefix = 0; prefix < Math.min(mapping.firstDataRow(), rows.size()); prefix++) {
+            Value prefixDate = value(rows.get(prefix), mapping.dateColumn());
+            Value prefixAmount = value(rows.get(prefix), mapping.amountColumn());
+            if (headerLabel(prefixDate) && headerLabel(prefixAmount)
+                    && date.raw().strip().equalsIgnoreCase(prefixDate.raw().strip())
+                    && amount.raw().strip().equalsIgnoreCase(prefixAmount.raw().strip())) return true;
+        }
+        return false;
+    }
+
+    private boolean headerLabel(Value value) {
+        if (value.type().equals("BLANK") || value.raw().isBlank()) return true;
+        // Numeric/date-looking values and spreadsheet errors cannot be reclassified as header text.
+        return value.type().equals("STRING") && value.raw().codePoints().anyMatch(Character::isLetter);
     }
 
     private boolean headerOrTotal(Value date, Value amount) {

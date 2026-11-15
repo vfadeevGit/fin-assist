@@ -279,6 +279,59 @@ class ScheduleTableReaderTest {
         assertIssue(() -> reader.inspect(stream(output.toByteArray()), "a.xlsx"), "INVALID_WORKBOOK");
     }
 
+    // Reject an exponent before expanding its plain decimal representation.
+    @Test
+    void rejectsNumericExponentExpansionBeforeAllocatingDecimalText() throws Exception {
+        try (var book = new XSSFWorkbook()) {
+            var row = book.createSheet().createRow(0);
+            row.createCell(0).setCellValue("2026-12-01");
+            var amount = row.createCell(1);
+            amount.setCellValue(1);
+            for (String raw : List.of("1E1000", "1E100000000", "-1E100000000", "1E2147483647",
+                    "100E2147483647", "1E2147483648")) {
+                amount.getCTCell().setV(raw);
+                assertIssue(() -> reader.read(stream(bytes(book)), "a.xlsx", mapping("sheet:0", null)),
+                        "AMOUNT_OVERFLOW");
+            }
+            amount.getCTCell().setV("1E-100000000");
+            assertIssue(() -> reader.read(stream(bytes(book)), "a.xlsx", mapping("sheet:0", null)), "AMOUNT_SCALE");
+            amount.getCTCell().setV("1.250E2");
+            assertThat(reader.read(stream(bytes(book)), "a.xlsx", mapping("sheet:0", null))
+                    .getFirst().amountText()).isEqualTo("125");
+        }
+    }
+
+    // The malformed final token makes a post-allocation Commons CSV width check insufficient.
+    @Test
+    void unquotedQuoteCannotHideAnOversizedCsvRecordFromPreflight() {
+        var limits = new ScheduleImportProperties();
+        limits.setMaxColumns(3);
+        byte[] bytes = "2026-12-01;1;foo\"\na;b;c;d;\"unterminated".getBytes(StandardCharsets.UTF_8);
+        var explicit = new Mapping("csv", 0, 1, 0, Set.of(), null, new CsvOptions("UTF-8", ';'));
+        assertIssue(() -> new ScheduleTableReader(limits).read(stream(bytes), "a.csv", explicit), "COLUMN_LIMIT");
+        byte[] valid = "2026-12-01;1;foo\"\n2026-12-02;2;ok".getBytes(StandardCharsets.UTF_8);
+        assertThat(new ScheduleTableReader(limits).read(stream(valid), "a.csv", explicit)).hasSize(2);
+    }
+
+    @Test
+    void explicitPrefixMappingConfirmsArbitrarySourceHeaders() {
+        for (String header : List.of("Дата платежа;Сумма платежа", "Due Date;Payment Amount")) {
+            byte[] bytes = (header + "\n2026-12-01;10\n" + header + "\n2026-12-02;20\n")
+                    .getBytes(StandardCharsets.UTF_8);
+            var mapping = new Mapping("csv", 0, 1, 1, Set.of(2), null);
+            assertThat(normalizer.normalize(reader.read(stream(bytes), "a.csv", mapping), null).rows())
+                    .containsExactly(new Row(LocalDate.of(2026, 12, 1), new BigDecimal("10.00")),
+                            new Row(LocalDate.of(2026, 12, 2), new BigDecimal("20.00")));
+        }
+    }
+
+    @Test
+    void prefixHeaderConfirmationCannotHideADataRowWithAnInvalidAmount() {
+        byte[] bytes = "2026-12-01;broken\n2026-12-02;20\n".getBytes(StandardCharsets.UTF_8);
+        assertIssue(() -> reader.read(stream(bytes), "a.csv", new Mapping("csv", 0, 1, 1, Set.of(), null)),
+                "INVALID_EXCLUDED_ROW");
+    }
+
     private Mapping mapping(String key, ParseOptions formats) {
         return new Mapping(key, 0, 1, 0, Set.of(), formats);
     }

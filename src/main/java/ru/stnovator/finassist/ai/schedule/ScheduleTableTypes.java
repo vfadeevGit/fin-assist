@@ -20,7 +20,7 @@ public final class ScheduleTableTypes {
     public record Inspection(List<Sheet> sheets, List<Issue> issues, CsvOptions csvOptions) {
         public Inspection { sheets = List.copyOf(sheets); issues = List.copyOf(issues); }
     }
-    /** Excluded rows and rows before firstDataRow must be confirmed recognizable headers/totals. */
+    /** firstDataRow confirms prefix header labels; exclusions may reference their repeats or recognizable headers/totals. */
     public record Mapping(String sheetKey, int dateColumn, int amountColumn, int firstDataRow,
                           Set<Integer> excludedRows, ParseOptions formats, CsvOptions csvOptions) {
         public Mapping { excludedRows = excludedRows == null ? Set.of() : Set.copyOf(excludedRows); }
