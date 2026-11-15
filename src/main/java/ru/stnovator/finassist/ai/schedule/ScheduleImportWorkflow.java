@@ -37,15 +37,16 @@ public class ScheduleImportWorkflow {
     private final SystemAuthenticator auth;
     private final AccessManager accessManager;
     private final Metadata metadata;
+    private final MetadataTools metadataTools;
     private final ApplicationContext applicationContext;
 
     public ScheduleImportWorkflow(ScheduleImportStore store, ScheduleImportOwnership ownership,
                                   ScheduleNormalizer normalizer, EffectiveScheduleService schedules,
                                   DataManager data, RelatedDataAccess access, SystemAuthenticator auth,
-                                  AccessManager accessManager, Metadata metadata, ApplicationContext applicationContext) {
+                                  AccessManager accessManager, Metadata metadata, MetadataTools metadataTools, ApplicationContext applicationContext) {
         this.store = store; this.ownership = ownership; this.normalizer = normalizer; this.schedules = schedules;
         this.data = data; this.access = access; this.auth = auth; this.accessManager = accessManager;
-        this.metadata = metadata; this.applicationContext = applicationContext;
+        this.metadata = metadata; this.metadataTools = metadataTools; this.applicationContext = applicationContext;
     }
 
     public Draft start(UUID conversationId, Kind kind) {
@@ -224,37 +225,62 @@ public class ScheduleImportWorkflow {
         Class<?> itemType = payment ? PaymentScheduleItem.class : ShipmentScheduleItem.class;
         Class<?> correctionType = payment ? PaymentScheduleCorrection.class : ShipmentScheduleCorrection.class;
         Class<?> correctionItemType = payment ? PaymentScheduleCorrectionItem.class : ShipmentScheduleCorrectionItem.class;
+        // All edited references belong to copies. A predicate must see the complete proposed graph,
+        // and building that graph must never dirty entities joined to the preview transaction.
+        Project proposedProject = metadataTools.deepCopy(context.project());
+        proposedProject.setContract(metadataTools.deepCopy(context.contract()));
         Object header;
         String parent;
+        Addendum addendum = null;
+        List<Object> removedItems = new ArrayList<>();
         if (c.mode() == Mode.ADDENDUM) {
-            Addendum addendum = data.create(Addendum.class);
-            addendum.setContract(context.contract()); addendum.setNumber(c.addendumNumber()); addendum.setEffectiveDate(c.effectiveDate());
-            write(Addendum.class, addendum, Action.CREATE, "contract", "number", "effectiveDate");
+            addendum = data.create(Addendum.class);
+            addendum.setContract(proposedProject.getContract()); addendum.setNumber(c.addendumNumber()); addendum.setEffectiveDate(c.effectiveDate());
             header = data.create(correctionType);
-            EntityValues.setValue(header, "project", context.project()); EntityValues.setValue(header, "addendum", addendum);
-            write(correctionType, header, Action.CREATE, "project", "addendum");
+            EntityValues.setValue(header, "project", proposedProject); EntityValues.setValue(header, "addendum", addendum);
+            addendum.setPaymentScheduleCorrections(payment ? List.of((PaymentScheduleCorrection) header) : List.of());
+            addendum.setShipmentScheduleCorrections(payment ? List.of() : List.of((ShipmentScheduleCorrection) header));
             itemType = correctionItemType; parent = "correction";
         } else {
-            if (c.mode() == Mode.CREATE) {
-                header = data.create(scheduleType); EntityValues.setValue(header, "project", context.project());
-                write(scheduleType, header, Action.CREATE, "project");
-            } else {
-                header = data.load(scheduleType).id(snapshot.baseScheduleId()).fetchPlan(fp -> fp.addFetchPlan(FetchPlan.LOCAL).add("project", FetchPlan.LOCAL))
-                        .joinTransaction(true).one();
-                write(scheduleType, header, Action.UPDATE, "project");
-            }
+            Object existing = c.mode() == Mode.CREATE ? null : data.load(scheduleType).id(snapshot.baseScheduleId())
+                    .fetchPlan(fp -> fp.addFetchPlan(FetchPlan.LOCAL).add("project", FetchPlan.LOCAL)).joinTransaction(true).one();
+            header = baseGraph(scheduleType, existing, proposedProject, payment);
             parent = "schedule";
             if (c.mode() == Mode.REPLACE) {
-                for (Object item : data.load(itemType).query("select e from " + itemType.getSimpleName() + " e where e.schedule.id = :schedule")
-                        .parameter("schedule", snapshot.baseScheduleId()).fetchPlan(fp -> fp.addFetchPlan(FetchPlan.LOCAL).add("schedule", FetchPlan.LOCAL))
-                        .joinTransaction(true).list()) write(itemType, item, Action.DELETE);
+                Object previous = baseGraph(scheduleType, existing, metadataTools.deepCopy(context.project()), payment);
+                for (Object item : data.load(itemType).query("select e from " + itemType.getSimpleName() + " e where e.schedule.id = :schedule order by e.itemDate, e.id")
+                        .parameter("schedule", snapshot.baseScheduleId()).fetchPlan(FetchPlan.LOCAL).joinTransaction(true).list()) {
+                    Object copy = metadataTools.deepCopy(item);
+                    EntityValues.setValue(copy, "schedule", previous); removedItems.add(copy);
+                }
+                EntityValues.setValue(previous, "items", removedItems);
             }
         }
+        List<Object> proposedItems = new ArrayList<>();
         for (Row row : rows) {
             Object item = data.create(itemType); EntityValues.setValue(item, parent, header);
             EntityValues.setValue(item, "itemDate", row.date()); EntityValues.setValue(item, "amount", row.amount());
-            write(itemType, item, Action.CREATE, parent, "itemDate", "amount");
+            proposedItems.add(item);
         }
+        EntityValues.setValue(header, "items", proposedItems);
+
+        // Evaluate every predicate only after both sides of every operation composition are linked.
+        if (addendum != null) {
+            write(Addendum.class, addendum, Action.CREATE, "contract", "number", "effectiveDate");
+            write(correctionType, header, Action.CREATE, "project", "addendum");
+        } else {
+            write(scheduleType, header, c.mode() == Mode.CREATE ? Action.CREATE : Action.UPDATE, "project");
+        }
+        for (Object item : removedItems) write(itemType, item, Action.DELETE);
+        for (Object item : proposedItems) write(itemType, item, Action.CREATE, parent, "itemDate", "amount");
+    }
+
+    private Object baseGraph(Class<?> scheduleType, Object existing, Project project, boolean payment) {
+        Object header = existing == null ? data.create(scheduleType) : metadataTools.deepCopy(existing);
+        EntityValues.setValue(header, "project", project);
+        if (payment) project.setPaymentSchedule((PaymentSchedule) header);
+        else project.setShipmentSchedule((ShipmentSchedule) header);
+        return header;
     }
     private enum Action { CREATE, UPDATE, DELETE }
     private void write(Class<?> type, Object entity, Action action, String... attributes) {

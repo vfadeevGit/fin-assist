@@ -183,6 +183,41 @@ class ScheduleImportWorkflowTest {
         var draft = prepared(); restricted("workflow-deny-item-create");
         assertThatThrownBy(() -> preview(draft, Mode.FILL)).isInstanceOf(io.jmix.core.security.AccessDeniedException.class);
     }
+    @Test void correctionTotalPredicateRejectsFullProposedSnapshot() {
+        fixture.payment(date, "100"); var draft = prepared();
+        restricted("workflow-correction-total-cap");
+        assertThatThrownBy(() -> preview(draft, Mode.ADDENDUM)).isInstanceOf(io.jmix.core.security.AccessDeniedException.class);
+        login();
+        assertThat(store.load(draft.operationId()).status()).isEqualTo(ScheduleImportStore.Status.COLLECTING);
+    }
+    @Test void addendumPredicateSeesCompleteCorrectionComposition() {
+        fixture.payment(date, "100"); var draft = prepared();
+        var before = domainCounts(); var base = persistedBaseState();
+        restricted("workflow-complete-addendum");
+        var result = preview(draft, Mode.ADDENDUM);
+        assertThat(workflow.getPreview(draft.operationId(), result.revision())).isEqualTo(result);
+        assertThat(domainCounts()).isEqualTo(before);
+        assertThat(persistedBaseState()).isEqualTo(base);
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value=Mode.class, names={"CREATE", "FILL", "REPLACE"})
+    void basePredicateSeesCompleteProposedItemsWithoutChangingPersistentGraph(Mode mode) {
+        if (mode == Mode.CREATE) data.remove(fixture.payment);
+        if (mode == Mode.REPLACE) fixture.payment(date, "100");
+        var draft = prepared(); var before = domainCounts(); var base = persistedBaseState();
+        restricted("workflow-complete-base");
+        var result = preview(draft, mode);
+        assertThat(workflow.getPreview(draft.operationId(), result.revision())).isEqualTo(result);
+        assertThat(domainCounts()).isEqualTo(before);
+        assertThat(persistedBaseState()).isEqualTo(base);
+    }
+    List<String> persistedBaseState() {
+        var headers = internal.load(PaymentSchedule.class).query("select e from PaymentSchedule e where e.project.id = :project")
+                .parameter("project", fixture.project.getId()).fetchPlan(fp -> fp.addFetchPlan(FetchPlan.LOCAL).add("items", FetchPlan.LOCAL)).list();
+        return headers.stream().flatMap(h -> java.util.stream.Stream.concat(java.util.stream.Stream.of(h.getId() + ":" + h.getVersion()),
+                h.getItems().stream().map(i -> i.getId() + ":" + i.getVersion() + ":" + i.getItemDate() + ":" + i.getAmount())))
+                .sorted().toList();
+    }
     @Test void invalidRowsAreNotStored() {
         var draft = workflow.start(conversation, Kind.PAYMENT);
         assertThatThrownBy(() -> workflow.setRows(draft.operationId(), draft.revision(), List.of(new InputRow(date.toString(), "1.001", "bad")), null)).isInstanceOf(IllegalArgumentException.class);
@@ -210,5 +245,40 @@ class ScheduleImportWorkflowTest {
     public interface DenyItemCreate {
         @io.jmix.security.role.annotation.PredicateRowLevelPolicy(entityClass=PaymentScheduleItem.class, actions=io.jmix.security.model.RowLevelPolicyAction.CREATE)
         default io.jmix.security.model.RowLevelBiPredicate<PaymentScheduleItem, org.springframework.context.ApplicationContext> items() { return (item, ctx) -> false; }
+    }
+    @io.jmix.security.role.annotation.RowLevelRole(name="Workflow correction total cap", code="workflow-correction-total-cap")
+    public interface CorrectionTotalCap {
+        @io.jmix.security.role.annotation.PredicateRowLevelPolicy(entityClass=PaymentScheduleCorrection.class, actions=io.jmix.security.model.RowLevelPolicyAction.CREATE)
+        default io.jmix.security.model.RowLevelBiPredicate<PaymentScheduleCorrection, org.springframework.context.ApplicationContext> correction() {
+            return (header, ctx) -> header.getItems() == null || header.getItems().stream().map(PaymentScheduleCorrectionItem::getAmount)
+                    .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add).compareTo(new java.math.BigDecimal("100")) <= 0;
+        }
+    }
+    @io.jmix.security.role.annotation.RowLevelRole(name="Workflow complete addendum", code="workflow-complete-addendum")
+    public interface CompleteAddendum {
+        @io.jmix.security.role.annotation.PredicateRowLevelPolicy(entityClass=Addendum.class, actions=io.jmix.security.model.RowLevelPolicyAction.CREATE)
+        default io.jmix.security.model.RowLevelBiPredicate<Addendum, org.springframework.context.ApplicationContext> addendum() {
+            return (addendum, ctx) -> addendum.getPaymentScheduleCorrections() != null && addendum.getPaymentScheduleCorrections().size() == 1
+                    && addendum.getShipmentScheduleCorrections() != null && addendum.getShipmentScheduleCorrections().isEmpty()
+                    && addendum.getPaymentScheduleCorrections().getFirst().getAddendum() == addendum
+                    && completeCorrection(addendum.getPaymentScheduleCorrections().getFirst());
+        }
+        @io.jmix.security.role.annotation.PredicateRowLevelPolicy(entityClass=PaymentScheduleCorrection.class, actions=io.jmix.security.model.RowLevelPolicyAction.CREATE)
+        default io.jmix.security.model.RowLevelBiPredicate<PaymentScheduleCorrection, org.springframework.context.ApplicationContext> correction() {
+            return (header, ctx) -> completeCorrection(header) && header.getAddendum().getPaymentScheduleCorrections().getFirst() == header;
+        }
+        private static boolean completeCorrection(PaymentScheduleCorrection header) {
+            return header.getItems() != null && header.getItems().size() == 1 && header.getItems().getFirst().getCorrection() == header
+                    && header.getItems().getFirst().getAmount().compareTo(new java.math.BigDecimal("120")) == 0;
+        }
+    }
+    @io.jmix.security.role.annotation.RowLevelRole(name="Workflow complete base", code="workflow-complete-base")
+    public interface CompleteBase {
+        @io.jmix.security.role.annotation.PredicateRowLevelPolicy(entityClass=PaymentSchedule.class, actions={io.jmix.security.model.RowLevelPolicyAction.CREATE, io.jmix.security.model.RowLevelPolicyAction.UPDATE})
+        default io.jmix.security.model.RowLevelBiPredicate<PaymentSchedule, org.springframework.context.ApplicationContext> header() {
+            return (header, ctx) -> header.getItems() != null && header.getItems().size() == 1 && header.getItems().getFirst().getSchedule() == header
+                    && header.getItems().getFirst().getAmount().compareTo(new java.math.BigDecimal("120")) == 0
+                    && header.getProject().getPaymentSchedule() == header;
+        }
     }
 }
