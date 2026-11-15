@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+ xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+    <changeSet id="1" author="finassist">
+        <createTable tableName="AI_SCHEDULE_ATTACHMENT">
+            <column name="ID" type="${uuid.type}"><constraints nullable="false" primaryKey="true" primaryKeyName="PK_AI_SCHEDULE_ATTACHMENT"/></column>
+            <column name="VERSION" type="int"><constraints nullable="false"/></column>
+            <column name="OWNER" type="varchar(255)"><constraints nullable="false"/></column>
+            <column name="CONVERSATION_ID" type="${uuid.type}"><constraints nullable="false"/></column>
+            <column name="CREATED_BY" type="varchar(255)"></column>
+            <column name="CREATED_DATE" type="${offsetDateTime.type}"></column>
+            <column name="LAST_MODIFIED_BY" type="varchar(255)"></column>
+            <column name="LAST_MODIFIED_DATE" type="${offsetDateTime.type}"></column>
+            <column name="FILE_NAME" type="varchar(255)"><constraints nullable="false"/></column>
+            <column name="FILE_REF" type="varchar(1024)"><constraints nullable="false"/></column>
+            <column name="SIZE_BYTES" type="bigint"><constraints nullable="false"/></column>
+            <column name="STAGED_AT" type="${offsetDateTime.type}"><constraints nullable="false"/></column>
+            <column name="REMOVAL_REQUESTED_AT" type="${offsetDateTime.type}"></column>
+            <column name="FILE_DELETED_AT" type="${offsetDateTime.type}"></column>
+        </createTable>
+        <addForeignKeyConstraint baseTableName="AI_SCHEDULE_ATTACHMENT" baseColumnNames="CONVERSATION_ID" referencedTableName="AITLS_AI_CONVERSATION_ENTITY" referencedColumnNames="ID" constraintName="FK_AI_SCHEDULE_ATTACHMENT_CONVERSATION"/>
+        <createIndex tableName="AI_SCHEDULE_ATTACHMENT" indexName="IDX_AI_SCHEDULE_ATTACHMENT_CONVERSATION"><column name="CONVERSATION_ID"/></createIndex>
+    </changeSet>
+    <changeSet id="2" author="finassist">
+        <createTable tableName="AI_SCHEDULE_IMPORT">
+            <column name="ID" type="${uuid.type}"><constraints nullable="false" primaryKey="true" primaryKeyName="PK_AI_SCHEDULE_IMPORT"/></column>
+            <column name="VERSION" type="int"><constraints nullable="false"/></column>
+            <column name="OWNER" type="varchar(255)"><constraints nullable="false"/></column>
+            <column name="CONVERSATION_ID" type="${uuid.type}"><constraints nullable="false"/></column>
+            <column name="CREATED_BY" type="varchar(255)"></column>
+            <column name="CREATED_DATE" type="${offsetDateTime.type}"></column>
+            <column name="LAST_MODIFIED_BY" type="varchar(255)"></column>
+            <column name="LAST_MODIFIED_DATE" type="${offsetDateTime.type}"></column>
+            <column name="REVISION" type="bigint"><constraints nullable="false"/></column>
+            <column name="IMPORT_STATUS" type="varchar(30)"><constraints nullable="false"/></column>
+            <column name="CONTENT_JSON" type="text"><constraints nullable="false"/></column>
+            <column name="TOUCHED_AT" type="${offsetDateTime.type}"><constraints nullable="false"/></column>
+            <column name="TERMINAL_AT" type="${offsetDateTime.type}"></column>
+            <column name="RESULT_ID" type="${uuid.type}"></column>
+            <column name="ATTACHMENT_ID" type="${uuid.type}"></column>
+        </createTable>
+        <addForeignKeyConstraint baseTableName="AI_SCHEDULE_IMPORT" baseColumnNames="CONVERSATION_ID" referencedTableName="AITLS_AI_CONVERSATION_ENTITY" referencedColumnNames="ID" constraintName="FK_AI_SCHEDULE_IMPORT_CONVERSATION"/>
+        <createIndex tableName="AI_SCHEDULE_IMPORT" indexName="IDX_AI_SCHEDULE_IMPORT_CONVERSATION"><column name="CONVERSATION_ID"/></createIndex>
+        <addForeignKeyConstraint baseTableName="AI_SCHEDULE_IMPORT" baseColumnNames="ATTACHMENT_ID" referencedTableName="AI_SCHEDULE_ATTACHMENT" referencedColumnNames="ID" constraintName="FK_AI_SCHEDULE_IMPORT_ATTACHMENT"/>
+        <createIndex tableName="AI_SCHEDULE_IMPORT" indexName="IDX_AI_SCHEDULE_IMPORT_ATTACHMENT"><column name="ATTACHMENT_ID"/></createIndex>
+    </changeSet>
+</databaseChangeLog>

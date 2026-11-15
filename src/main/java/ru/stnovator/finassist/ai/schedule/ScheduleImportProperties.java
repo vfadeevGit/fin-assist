@@ -7,6 +7,18 @@ import org.springframework.stereotype.Component;
 @Component
 @ConfigurationProperties(prefix = "finassist.schedule-import")
 public class ScheduleImportProperties {
+    private java.time.Duration draftTtl = java.time.Duration.ofHours(24);
+    private java.time.Duration fileRetention = java.time.Duration.ofHours(24);
+    public java.time.Duration getDraftTtl() { return draftTtl; }
+    public void setDraftTtl(java.time.Duration value) {
+        if (value == null || value.isNegative() || value.isZero()) throw new IllegalArgumentException("draftTtl must be positive");
+        draftTtl = value;
+    }
+    public java.time.Duration getFileRetention() { return fileRetention; }
+    public void setFileRetention(java.time.Duration value) {
+        if (value == null || value.isNegative() || value.isZero()) throw new IllegalArgumentException("fileRetention must be positive");
+        fileRetention = value;
+    }
     private long maxFileBytes = 25L * 1024 * 1024;
     private long maxInflatedBytes = 64L * 1024 * 1024;
     private int maxRows = 10000;
