@@ -74,6 +74,19 @@ class ScheduleImportStoreTest {
         assertThatThrownBy(()->data.loadValue("select e.contentJson from AiScheduleImport e",String.class).list()).isInstanceOf(RuntimeException.class);
         assertThat(storeStatus(id)).isEqualTo("COLLECTING");
     }
+    @Test void entityQueriesCannotProbeForeignTechnicalSubqueries() {
+        UUID id=store.create(conversation);store.update(id,0,content(null));
+        var admin=internal.load(User.class).query("select u from User u where u.username = 'admin'").one();
+        DashboardFixtures.authenticate(admin,"ROLE_system-full-access");
+        assertThatThrownBy(()->data.load(User.class).query("select u from User u where u.username = :me and exists (select i.id from AiScheduleImport i where i.owner <> :me and i.contentJson like :guess)")
+                .parameter("me","admin").parameter("guess","%PAYMENT%").list()).isInstanceOf(io.jmix.core.security.AccessDeniedException.class);
+        // This legitimate business-only EXISTS remains available.
+        assertThat(data.load(User.class).query("select u from User u where u.username = :me and exists (select v.id from User v where v.id = u.id)")
+                .parameter("me","admin").list()).extracting(User::getUsername).containsExactly("admin");
+        login(owner);var user=internal.create(User.class);user.setUsername(owner);DashboardFixtures.authenticate(user,"ROLE_system-full-access");
+        assertThatThrownBy(()->data.load(AiScheduleImport.class).query("select i from AiScheduleImport i where exists (select hidden.id from AiScheduleImport hidden where hidden.contentJson like :guess)")
+                .parameter("guess","%PAYMENT%").list()).isInstanceOf(io.jmix.core.security.AccessDeniedException.class);
+    }
     String storeStatus(UUID id) {return internal.load(AiScheduleImport.class).id(id).one().getStatus();}
     @Test void messageProvenanceCannotCrossConversation() {
         var other=internal.create(AiConversationEntity.class);other.setUsername(owner);other.setTitle("other");other=internal.save(other);

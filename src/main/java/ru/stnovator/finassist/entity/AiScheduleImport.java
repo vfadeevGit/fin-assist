@@ -2,6 +2,8 @@ package ru.stnovator.finassist.entity;
 
 import io.jmix.aitoolsflowuidata.entity.AiConversationEntity;
 import io.jmix.core.entity.annotation.JmixGeneratedValue;
+import io.jmix.core.entity.annotation.OnDeleteInverse;
+import io.jmix.core.DeletePolicy;
 import io.jmix.core.metamodel.annotation.InstanceName;
 import io.jmix.core.metamodel.annotation.JmixEntity;
 import jakarta.persistence.*;
@@ -16,6 +18,7 @@ import java.util.UUID;
 /** Technical import state. Writes are restricted to server services. */
 @JmixEntity
 @Table(name = "AI_SCHEDULE_IMPORT", indexes = {
+        @Index(name = "IDX_AI_SCHEDULE_IMPORT_ORIGINAL_CONV", columnList = "ORIGINAL_CONVERSATION_ID"),
         @Index(name = "IDX_AI_SCHEDULE_IMPORT_CONVERSATION", columnList = "CONVERSATION_ID"),
         @Index(name = "IDX_AI_SCHEDULE_IMPORT_ATTACHMENT", columnList = "ATTACHMENT_ID")
 })
@@ -35,10 +38,15 @@ public class AiScheduleImport {
     @NotNull
     private String owner;
 
-    @JoinColumn(name = "CONVERSATION_ID", nullable = false, updatable = false)
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @NotNull
+    @OnDeleteInverse(DeletePolicy.UNLINK)
+    @JoinColumn(name = "CONVERSATION_ID", updatable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
     private AiConversationEntity conversation;
+
+    /** Immutable provenance survives hard deletion of the live chat conversation. */
+    @NotNull
+    @Column(name = "ORIGINAL_CONVERSATION_ID", nullable = false, updatable = false)
+    private UUID originalConversationId;
 
     @CreatedBy
     @Column(name = "CREATED_BY")
@@ -84,6 +92,8 @@ public class AiScheduleImport {
     public void setVersion(Integer value) { version = value; }
     public String getOwner() { return owner; }
     public void setOwner(String value) { owner = value; }
+    public UUID getOriginalConversationId() { return originalConversationId; }
+    public void setOriginalConversationId(UUID value) { originalConversationId = value; }
     public AiConversationEntity getConversation() { return conversation; }
     public void setConversation(AiConversationEntity value) { conversation = value; }
     public String getCreatedBy() { return createdBy; }

@@ -35,7 +35,7 @@ public class ScheduleImportStore {
     public UUID create(UUID conversationId) {
         var conversation=ownership.conversation(conversationId);
         var entity=data.create(AiScheduleImport.class);
-        entity.setOwner(ownership.username()); entity.setConversation(conversation);
+        entity.setOwner(ownership.username()); entity.setConversation(conversation); entity.setOriginalConversationId(conversationId);
         return data.save(entity).getId();
     }
     @Transactional
@@ -50,8 +50,8 @@ public class ScheduleImportStore {
     public Draft update(UUID operationId, long expectedRevision, DraftContent content) {
         Objects.requireNonNull(content,"content");
         var entity=editable(operationId,expectedRevision);
-        if(content.sourceMessageId()!=null)ownership.userMessage(content.sourceMessageId(),entity.getConversation().getId());
-        entity.setAttachment(content.source()==null ? null : attachments.reference(content.source(),entity.getConversation().getId(),operationId));
+        if(content.sourceMessageId()!=null)ownership.userMessage(content.sourceMessageId(),entity.getOriginalConversationId());
+        entity.setAttachment(content.source()==null ? null : attachments.reference(content.source(),entity.getOriginalConversationId(),operationId));
         var invalidated=new DraftContent(content.kind(),content.source(),content.sourceMessageId(),content.mapping(),content.rows(),
                 content.contractId(),content.projectId(),content.mode(),content.addendumNumber(),content.effectiveDate(),null);
         entity.setContentJson(encode(invalidated)); entity.setStatus(Status.COLLECTING.name());
@@ -81,10 +81,11 @@ public class ScheduleImportStore {
     private AiScheduleImport owned(UUID id) {
         var entity=data.load(AiScheduleImport.class).id(id).lockMode(LockModeType.PESSIMISTIC_WRITE).optional()
                 .orElseThrow(()->new SecurityException("Import is unavailable"));
-        ownership.check(entity.getOwner(),entity.getConversation().getId());return entity;
+        ownership.receipt(entity.getOwner(),entity.getOriginalConversationId());return entity;
     }
     private AiScheduleImport editable(UUID id,long revision) {
         var entity=owned(id);
+        if(entity.getConversation()==null) throw new IllegalStateException("Conversation has been removed");
         if(entity.getRevision()!=revision) throw new ConcurrentModificationException("Draft revision has changed");
         if(!active(entity) || entity.getTouchedAt().plus(properties.getDraftTtl()).isBefore(OffsetDateTime.now()))
             throw new IllegalStateException("Import is closed or expired");
@@ -98,7 +99,7 @@ public class ScheduleImportStore {
         advance(entity);entity.setStatus(status.name());entity.setTerminalAt(OffsetDateTime.now());
     }
     Draft draft(AiScheduleImport e) {
-        return new Draft(e.getId(),e.getConversation().getId(),e.getRevision(),Status.valueOf(e.getStatus()),
+        return new Draft(e.getId(),e.getOriginalConversationId(),e.getRevision(),Status.valueOf(e.getStatus()),
                 e.getCreatedDate(),e.getTouchedAt(),e.getTerminalAt(),e.getResultId(),decode(e.getContentJson()));
     }
     private String encode(DraftContent content) {return json.writeValueAsString(new Envelope(1,content));}

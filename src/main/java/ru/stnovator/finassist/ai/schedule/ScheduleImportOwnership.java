@@ -34,8 +34,15 @@ public class ScheduleImportOwnership {
         if (!username().equals(owner)) throw new SecurityException("Import is unavailable");
         conversation(conversationId);
     }
+    /** A deleted conversation leaves only a server-owned, read-only operation receipt. */
+    public void receipt(String owner, UUID originalConversationId) {
+        if (!username().equals(owner)) throw new SecurityException("Import is unavailable");
+        data.load(AiConversationEntity.class).id(originalConversationId).optional().ifPresent(conversation -> {
+            if (!username().equals(conversation.getUsername())) throw new SecurityException("Import is unavailable");
+        });
+    }
     public boolean owns(String owner, UUID conversationId) {
-        try { check(owner, conversationId); return true; }
+        try { receipt(owner, conversationId); return true; }
         catch (SecurityException ex) { return false; }
     }
 }

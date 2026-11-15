@@ -13,6 +13,6 @@ public interface AiScheduleImportRole {
     @EntityAttributePolicy(entityClass=AiScheduleImport.class,attributes="*",action=EntityAttributePolicyAction.VIEW)
     void imports();
     @EntityPolicy(entityClass=AiScheduleAttachment.class,actions=EntityPolicyAction.READ)
-    @EntityAttributePolicy(entityClass=AiScheduleAttachment.class,attributes={"id","version","owner","conversation","fileName","sizeBytes","stagedAt","removalRequestedAt","fileDeletedAt","createdBy","createdDate","lastModifiedBy","lastModifiedDate"},action=EntityAttributePolicyAction.VIEW)
+    @EntityAttributePolicy(entityClass=AiScheduleAttachment.class,attributes={"id","version","owner","conversation","originalConversationId","fileName","sizeBytes","stagedAt","removalRequestedAt","fileDeletedAt","createdBy","createdDate","lastModifiedBy","lastModifiedDate"},action=EntityAttributePolicyAction.VIEW)
     void attachments();
 }

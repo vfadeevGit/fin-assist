@@ -35,7 +35,7 @@ public class ScheduleAttachmentService {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override public void afterCompletion(int status) {if(status!=STATUS_COMMITTED) storage.removeFile(ref);}
         });
-        var attachment=data.create(AiScheduleAttachment.class);attachment.setOwner(ownership.username());attachment.setConversation(conversation);
+        var attachment=data.create(AiScheduleAttachment.class);attachment.setOwner(ownership.username());attachment.setConversation(conversation);attachment.setOriginalConversationId(conversationId);
         attachment.setFileName(fileName);attachment.setFileRef(ref);attachment.setSizeBytes((long)bytes.length);
         return data.save(attachment).getId();
     }
@@ -47,25 +47,35 @@ public class ScheduleAttachmentService {
     }
     @Transactional
     public void remove(UUID attachmentId) {
-        var attachment=owned(attachmentId);var references=references(attachmentId);
+        var attachment=ownedForRemoval(attachmentId);var references=references(attachmentId);
         if(references.stream().anyMatch(ScheduleImportStore::active)) throw new IllegalStateException("Attachment is in active use");
         if(attachment.getFileDeletedAt()!=null)return;
-        attachment.setRemovalRequestedAt(OffsetDateTime.now());
+        if(attachment.getRemovalRequestedAt()==null)attachment.setRemovalRequestedAt(OffsetDateTime.now());
         boolean retained=references.stream().anyMatch(e->e.getTerminalAt()==null || e.getTerminalAt().plus(properties.getFileRetention()).isAfter(OffsetDateTime.now()));
+        if(attachment.getConversation()==null && attachment.getRemovalRequestedAt().plus(properties.getFileRetention()).isAfter(OffsetDateTime.now()))retained=true;
         if(!retained) deleteFile(attachment);
         data.saveWithoutReload(attachment);
     }
     AiScheduleAttachment reference(UUID id,UUID conversationId,UUID operationId) {
         var attachment=owned(id);
-        if(!attachment.getConversation().getId().equals(conversationId)) throw new SecurityException("Attachment belongs to another conversation");
+        if(!attachment.getOriginalConversationId().equals(conversationId)) throw new SecurityException("Attachment belongs to another conversation");
         if(attachment.getFileDeletedAt()!=null || attachment.getRemovalRequestedAt()!=null) throw new IllegalStateException("File is unavailable");
         if(references(id).stream().anyMatch(e->!e.getId().equals(operationId))) throw new IllegalStateException("Attachment already belongs to an import");
         return attachment;
     }
+    private AiScheduleAttachment ownedForRemoval(UUID id) {
+        var attachment=locked(id);
+        ownership.receipt(attachment.getOwner(),attachment.getOriginalConversationId());
+        return attachment;
+    }
     private AiScheduleAttachment owned(UUID id) {
+        var attachment=locked(id);
+        ownership.check(attachment.getOwner(),attachment.getOriginalConversationId());return attachment;
+    }
+    private AiScheduleAttachment locked(UUID id) {
         var attachment=data.load(AiScheduleAttachment.class).id(id).lockMode(LockModeType.PESSIMISTIC_WRITE).optional()
                 .orElseThrow(()->new SecurityException("Attachment is unavailable"));
-        ownership.check(attachment.getOwner(),attachment.getConversation().getId());return attachment;
+        return attachment;
     }
     List<AiScheduleImport> references(UUID id) {
         return data.load(AiScheduleImport.class).query("select e from AiScheduleImport e where e.attachment.id = :id").parameter("id",id).list();

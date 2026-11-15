@@ -46,6 +46,7 @@ public class ScheduleImportCleanup {
                 try { transaction.executeWithoutResult(status->{
                     var entity=data.load(AiScheduleAttachment.class).id(candidate.getId()).lockMode(LockModeType.PESSIMISTIC_WRITE).optional().orElse(null);
                     if(entity==null || entity.getFileDeletedAt()!=null)return;
+                    if(entity.getRemovalRequestedAt()!=null && entity.getRemovalRequestedAt().plus(properties.getFileRetention()).isAfter(now))return;
                     var references=attachments.references(entity.getId());
                     if(references.stream().anyMatch(ScheduleImportStore::active))return;
                     if(references.isEmpty()) {
