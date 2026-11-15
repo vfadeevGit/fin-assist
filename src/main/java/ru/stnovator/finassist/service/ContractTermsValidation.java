@@ -6,17 +6,18 @@ import io.jmix.core.Id;
 import io.jmix.core.event.EntityChangedEvent;
 import io.jmix.core.event.EntitySavingEvent;
 import io.jmix.core.security.SystemAuthenticator;
-import jakarta.persistence.LockModeType;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.event.TransactionPhase;
-import org.springframework.transaction.event.TransactionalEventListener;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import ru.stnovator.finassist.entity.Addendum;
 import ru.stnovator.finassist.entity.Contract;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.TreeSet;
 
 /** Locks serialize all term mutations; final validation sees the complete transaction, including removals. */
 @Component
@@ -25,13 +26,15 @@ public class ContractTermsValidation {
     private final SystemAuthenticator authenticator;
     private final ContractTermsService terms;
     private final RelatedDataAccess access;
+    private final ScheduleMutationGuard mutations;
 
     public ContractTermsValidation(DataManager data, SystemAuthenticator authenticator, ContractTermsService terms,
-                                   RelatedDataAccess access) {
+                                   RelatedDataAccess access, ScheduleMutationGuard mutations) {
         this.data = data;
         this.authenticator = authenticator;
         this.terms = terms;
         this.access = access;
+        this.mutations = mutations;
     }
 
     @EventListener
@@ -63,7 +66,7 @@ public class ContractTermsValidation {
         if (!event.isNewEntity()) authenticator.runWithSystem(() -> lock(event.getEntity().getId()));
     }
 
-    @TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT)
+    @EventListener
     public void changedAddendum(EntityChangedEvent<Addendum> event) {
         validateAsSystem(() -> {
             UUID contractId;
@@ -75,14 +78,37 @@ public class ContractTermsValidation {
                         .fetchPlan(fp -> fp.addFetchPlan(FetchPlan.LOCAL).add("contract", FetchPlan.LOCAL))
                         .optional().map(a -> a.getContract().getId()).orElse(null);
             }
-            if (contractId != null) validate(contractId);
+            if (contractId != null) validateBeforeCommit(contractId);
         });
     }
 
-    @TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT)
+    @EventListener
     public void changedContract(EntityChangedEvent<Contract> event) {
         if (event.getType() != EntityChangedEvent.Type.DELETED) {
-            validateAsSystem(() -> validate((UUID) event.getEntityId().getValue()));
+            validateBeforeCommit((UUID) event.getEntityId().getValue());
+        }
+    }
+
+    private void validateBeforeCommit(UUID contractId) {
+        lock(contractId);
+        // A normal synchronous event listener acquires the lock now. Validation is deferred so
+        // several DataManager saves/removes in one outer transaction are evaluated as a whole.
+        FinalValidation pending = TransactionSynchronizationManager.getSynchronizations().stream()
+                .filter(FinalValidation.class::isInstance).map(FinalValidation.class::cast).findFirst()
+                .orElseGet(() -> {
+                    var synchronization = new FinalValidation();
+                    TransactionSynchronizationManager.registerSynchronization(synchronization);
+                    return synchronization;
+                });
+        pending.contractIds.add(contractId);
+    }
+
+    private final class FinalValidation implements TransactionSynchronization {
+        private final Set<UUID> contractIds = new TreeSet<>();
+
+        @Override
+        public void beforeCommit(boolean readOnly) {
+            contractIds.forEach(id -> validateAsSystem(() -> validate(id)));
         }
     }
 
@@ -100,8 +126,7 @@ public class ContractTermsValidation {
     }
 
     private void lock(UUID contractId) {
-        data.load(Contract.class).id(contractId).fetchPlan(FetchPlan.LOCAL)
-                .lockMode(LockModeType.PESSIMISTIC_WRITE).optional();
+        mutations.lockContracts(Set.of(contractId));
     }
 
     private void validate(UUID contractId) {
