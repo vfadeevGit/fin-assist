@@ -6,6 +6,8 @@ import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.menubar.MenuBar;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
+import com.vaadin.flow.component.upload.FailedEvent;
+import com.vaadin.flow.component.upload.StartedEvent;
 import io.jmix.aitoolsflowui.model.AiConversation;
 import io.jmix.aitoolsflowui.service.AiConversationService;
 import io.jmix.aitoolsflowui.view.input.AiChatInputFragment;
@@ -49,7 +51,10 @@ public class ScheduleAiChatInputFragment extends AiChatInputFragment {
     private VerticalLayout pendingAttachment;
     private AiConversation attachmentConversation;
     private Pending pending;
-    private boolean uploading;
+    private record UploadAttempt(UUID conversationId, long generation, String fileName) {}
+    private UploadAttempt activeUpload;
+    private long bindingGeneration;
+    private boolean inputEnabled = true;
     private MenuBar addMenu;
 
     @Subscribe
@@ -64,19 +69,9 @@ public class ScheduleAiChatInputFragment extends AiChatInputFragment {
         add.getSubMenu().addItem(attachmentUpload, e -> {
         });
         inputBar.addComponentAsFirst(addMenu);
-        attachmentUpload.addUploadStartedListener(e -> {
-            uploading = true;
-            super.setInputEnabled(false);
-        });
-        attachmentUpload.addUploadFailedListener(e -> {
-            uploading = false;
-            setInputEnabled(true);
-            error();
-        });
-        attachmentUpload.addUploadFinishedListener(e -> {
-            uploading = false;
-            setInputEnabled(true);
-        });
+        attachmentUpload.addUploadStartedListener(this::onUploadStarted);
+        attachmentUpload.addUploadFailedListener(this::onUploadFailed);
+        // Finished means the bytes transferred. The pinned handler validates and delivers Success later.
     }
 
     private String text(String key) {
@@ -86,8 +81,12 @@ public class ScheduleAiChatInputFragment extends AiChatInputFragment {
     public void bindConversation(@Nullable AiConversation conversation) {
         UUID old = attachmentConversation == null ? null : attachmentConversation.getId();
         UUID next = conversation == null ? null : conversation.getId();
-        if (!Objects.equals(old, next)) removePendingAttachment();
+        if (!Objects.equals(old, next)) {
+            bindingGeneration++;
+            removePendingAttachment();
+        }
         attachmentConversation = conversation;
+        refreshInputAvailability();
     }
 
     public AiConversation getAttachmentConversation() {
@@ -103,7 +102,36 @@ public class ScheduleAiChatInputFragment extends AiChatInputFragment {
     }
 
     public boolean isUploading() {
-        return uploading;
+        return activeUpload != null;
+    }
+
+    private void onUploadStarted(StartedEvent event) {
+        if (activeUpload != null || !inputEnabled || pending != null) return;
+        try {
+            // Snapshot the native conversation before transfer completion, including on the hub.
+            if (attachmentConversation == null) attachmentConversation = conversations.create();
+            activeUpload = new UploadAttempt(attachmentConversation.getId(), bindingGeneration, event.getFileName());
+            refreshInputAvailability();
+        } catch (RuntimeException failure) {
+            error();
+        }
+    }
+
+    private boolean isCurrent(UploadAttempt attempt) {
+        return attempt != null && attempt == activeUpload && attempt.generation() == bindingGeneration
+                && attachmentConversation != null && attempt.conversationId().equals(attachmentConversation.getId());
+    }
+
+    private void completeUpload(UploadAttempt attempt) {
+        if (attempt != null && attempt == activeUpload) activeUpload = null;
+        refreshInputAvailability();
+    }
+
+    private void onUploadFailed(FailedEvent event) {
+        var attempt = activeUpload;
+        if (attempt == null || !attempt.fileName().equals(event.getFileName())) return;
+        if (isCurrent(attempt)) error();
+        completeUpload(attempt);
     }
 
     public Pending takePendingAttachment() {
@@ -127,23 +155,29 @@ public class ScheduleAiChatInputFragment extends AiChatInputFragment {
     @Subscribe("attachmentUpload")
     public void onAttachmentUploadSucceeded(UploadSucceededEvent<TemporaryStorage.FileInfo> event) {
         var info = event.getData();
+        var attempt = activeUpload;
         try {
+            if (!isCurrent(attempt) || !attempt.fileName().equals(event.getFileName())) return;
             if (info == null || pending != null) throw new IllegalStateException();
-            // Native conversation creation is required before stage(), including on the hub.
-            if (attachmentConversation == null) attachmentConversation = conversations.create();
             try (var input = new FileInputStream(info.getFile())) {
-                UUID id = attachments.stage(attachmentConversation.getId(), event.getFileName(), input);
+                UUID id = attachments.stage(attempt.conversationId(), event.getFileName(), input);
+                if (!isCurrent(attempt)) {
+                    attachments.remove(id);
+                    return;
+                }
                 pending = new Pending(id, event.getFileName(), info.getFile().length());
             }
             renderPending();
         }
         catch (IOException | RuntimeException failure) {
-            error();
+            if (isCurrent(attempt)) error();
         } finally {
-            if (info != null) temporaryStorage.deleteFile(info.getId());
-            attachmentUpload.clearFileList();
-            uploading = false;
-            setInputEnabled(true);
+            try {
+                if (info != null) temporaryStorage.deleteFile(info.getId());
+            } finally {
+                attachmentUpload.clearFileList();
+                completeUpload(attempt);
+            }
         }
     }
 
@@ -161,13 +195,18 @@ public class ScheduleAiChatInputFragment extends AiChatInputFragment {
 
     @Override
     public void setInputEnabled(boolean enabled) {
-        super.setInputEnabled(enabled && !uploading);
-        if (addMenu != null) addMenu.setEnabled(enabled && !uploading && pending == null);
+        inputEnabled = enabled;
+        refreshInputAvailability();
+    }
+
+    private void refreshInputAvailability() {
+        super.setInputEnabled(inputEnabled && !isUploading());
+        if (addMenu != null) addMenu.setEnabled(inputEnabled && !isUploading() && pending == null);
     }
 
     @Override
     protected void submit() {
-        if (!uploading) super.submit();
+        if (!isUploading()) super.submit();
     }
 
     private void error() {

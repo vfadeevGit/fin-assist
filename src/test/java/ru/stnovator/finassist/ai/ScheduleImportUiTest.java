@@ -1,6 +1,10 @@
 package ru.stnovator.finassist.ai;
 
 import com.vaadin.flow.component.button.Button;
+import com.vaadin.flow.component.ComponentUtil;
+import com.vaadin.flow.component.upload.StartedEvent;
+import com.vaadin.flow.component.upload.FinishedEvent;
+import com.vaadin.flow.component.upload.FailedEvent;
 import io.jmix.aitoolsflowui.service.AiConversationService;
 import io.jmix.aitoolsflowui.service.AiChatMessageService;
 import io.jmix.aitoolsflowui.view.chat.AiChatView;
@@ -109,8 +113,134 @@ class ScheduleImportUiTest {
     void upload(ScheduleAiChatInputFragment input) {
         UUID file = temporaryStorage.saveFile("date;amount\n2027-01-01;12.34".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         when(attachments.stage(any(), eq("schedule.csv"), any())).thenReturn(UUID.randomUUID());
+        startUpload(input);
+        // The pinned temporary-storage handler emits transfer Finished before Success.
+        finishTransfer(input);
         input.onAttachmentUploadSucceeded(new UploadSucceededEvent<>(input.getAttachmentUpload(),
                 new TemporaryStorage.FileInfo(Objects.requireNonNull(temporaryStorage.getFile(file)), file), "schedule.csv", "text/csv", 30));
+    }
+
+    void startUpload(ScheduleAiChatInputFragment input) {
+        ComponentUtil.fireEvent(input.getAttachmentUpload(), new StartedEvent(input.getAttachmentUpload(), "schedule.csv", "text/csv", 30));
+    }
+
+    void finishTransfer(ScheduleAiChatInputFragment input) {
+        ComponentUtil.fireEvent(input.getAttachmentUpload(), new FinishedEvent(input.getAttachmentUpload(), "schedule.csv", "text/csv", 30));
+    }
+
+    void failUpload(ScheduleAiChatInputFragment input) {
+        ComponentUtil.fireEvent(input.getAttachmentUpload(), new FailedEvent(input.getAttachmentUpload(), "schedule.csv", "text/csv", 30, new java.io.IOException("test failure")));
+    }
+
+    @Test
+    void uploadCompletionAfterConversationSwitchIsDiscardedAndPreservesDisabledState() {
+        auth.runWithUser("admin", () -> {
+            var a = conversations.create(); var b = conversations.create();
+            UUID file = temporaryStorage.saveFile("date;amount".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            var temporaryFile = Objects.requireNonNull(temporaryStorage.getFile(file));
+            try {
+                var input = (ScheduleAiChatInputFragment) fragments.create(UiTestUtils.getCurrentView(), AiChatInputFragment.class);
+                input.bindConversation(a); startUpload(input);
+                input.bindConversation(b); input.setInputEnabled(false);
+                input.onAttachmentUploadSucceeded(new UploadSucceededEvent<>(input.getAttachmentUpload(),
+                        new TemporaryStorage.FileInfo(temporaryFile, file), "schedule.csv", "text/csv", 11));
+                finishTransfer(input);
+                verify(attachments, never()).stage(any(), any(), any());
+                assertThat(input.getAttachmentConversation().getId()).isEqualTo(b.getId());
+                assertThat(input.getPendingAttachment()).isNull();
+                assertThat(temporaryFile).doesNotExist();
+                assertThat(input.isInputEnabled()).isFalse();
+            } finally { temporaryStorage.deleteFile(file); conversations.remove(a); conversations.remove(b); }
+        });
+    }
+
+    @Test
+    void lateUploadFailureDoesNotEnableSwitchedBusyComposer() {
+        auth.runWithUser("admin", () -> {
+            var a = conversations.create(); var b = conversations.create();
+            try {
+                var input = (ScheduleAiChatInputFragment) fragments.create(UiTestUtils.getCurrentView(), AiChatInputFragment.class);
+                input.bindConversation(a); startUpload(input);
+                input.bindConversation(b); input.setInputEnabled(false);
+                failUpload(input); finishTransfer(input);
+                assertThat(input.isInputEnabled()).isFalse();
+                assertThat(input.getPendingAttachment()).isNull();
+                verify(attachments, never()).stage(any(), any(), any());
+            } finally { conversations.remove(a); conversations.remove(b); }
+        });
+    }
+
+    @Test
+    void transferFinishedBeforeSuccessKeepsComposerBlocked() {
+        auth.runWithUser("admin", () -> {
+            var chat = conversations.create();
+            UUID file = temporaryStorage.saveFile("date;amount".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            try {
+                var input = (ScheduleAiChatInputFragment) fragments.create(UiTestUtils.getCurrentView(), AiChatInputFragment.class);
+                input.bindConversation(chat); startUpload(input); finishTransfer(input);
+                assertThat(input.isUploading()).isTrue();
+                assertThat(input.isInputEnabled()).isFalse();
+                when(attachments.stage(eq(chat.getId()), any(), any())).thenReturn(UUID.randomUUID());
+                input.onAttachmentUploadSucceeded(new UploadSucceededEvent<>(input.getAttachmentUpload(),
+                        new TemporaryStorage.FileInfo(Objects.requireNonNull(temporaryStorage.getFile(file)), file), "schedule.csv", "text/csv", 11));
+                assertThat(input.isUploading()).isFalse();
+                assertThat(input.isInputEnabled()).isTrue();
+            } finally { temporaryStorage.deleteFile(file); conversations.remove(chat); }
+        });
+    }
+
+    @Test
+    void textOnlyRetryPreservesLaterFileForNextUserMessage() { retryPreservesLaterFile(false); }
+
+    @Test
+    void attachedRetryPreservesLaterFileForNextUserMessage() { retryPreservesLaterFile(true); }
+
+    void retryPreservesLaterFile(boolean originallyAttached) {
+        auth.runWithUser("admin", () -> {
+            var chat = conversations.create();
+            try {
+                navigators.view(UiTestUtils.getCurrentView(), AiChatView.class)
+                        .withRouteParameters(new com.vaadin.flow.router.RouteParameters("id", chat.getId().toString())).navigate();
+                var fragment = (ScheduleAiChatFragment) UiTestUtils.getComponent(UiTestUtils.getCurrentView(), "chatFragment");
+                var input = (ScheduleAiChatInputFragment) FragmentUtils.getComponent(fragment, "composerFragment");
+                if (originallyAttached) upload(input);
+                var originalAttachment = input.getPendingAttachment();
+                doAnswer(invocation -> { ((Runnable) invocation.getArgument(5)).run(); return null; })
+                        .when(coordinator).run(any(), any(), any(), any(), any(), any());
+                fragment.sendMessage("Original submitted message");
+                var original = chatMessages.loadMessages(chat).stream().findFirst().orElseThrow();
+                upload(input); var later = input.getPendingAttachment();
+                fragment.getRetryButton().click();
+                verify(coordinator, times(2)).run(any(), any(), argThat(m -> m.getId().equals(original.getId())), any(), any(), any());
+                verify(attachments, never()).bindToMessage(later.id(), original.getId());
+                assertThat(input.getPendingAttachment()).isEqualTo(later);
+                if (originallyAttached) verify(attachments, times(1)).bindToMessage(originalAttachment.id(), original.getId());
+                assertThat(chatMessages.loadMessages(chat)).hasSize(1);
+                fragment.sendMessage("Next submitted message");
+                var next = chatMessages.loadMessages(chat).stream().filter(m -> !m.getId().equals(original.getId())).findFirst().orElseThrow();
+                verify(attachments).bindToMessage(later.id(), next.getId());
+            } finally { conversations.remove(chat); }
+        });
+    }
+
+    @Test
+    void retryWhileUploadingDoesNotProcessTheOldMessage() {
+        auth.runWithUser("admin", () -> {
+            var chat = conversations.create();
+            try {
+                navigators.view(UiTestUtils.getCurrentView(), AiChatView.class)
+                        .withRouteParameters(new com.vaadin.flow.router.RouteParameters("id", chat.getId().toString())).navigate();
+                var fragment = (ScheduleAiChatFragment) UiTestUtils.getComponent(UiTestUtils.getCurrentView(), "chatFragment");
+                var input = (ScheduleAiChatInputFragment) FragmentUtils.getComponent(fragment, "composerFragment");
+                doAnswer(invocation -> { ((Runnable) invocation.getArgument(5)).run(); return null; })
+                        .when(coordinator).run(any(), any(), any(), any(), any(), any());
+                fragment.sendMessage("Original submitted message");
+                startUpload(input); fragment.getRetryButton().click();
+                verify(coordinator, times(1)).run(any(), any(), any(), any(), any(), any());
+                assertThat(input.isUploading()).isTrue();
+                failUpload(input);
+            } finally { conversations.remove(chat); }
+        });
     }
 
     @Test
