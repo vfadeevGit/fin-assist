@@ -62,4 +62,14 @@ class AiToolsConfigurationTest {
     void registersNavigationTool() {
         assertThat(context.containsBean("finassist_EntityLinksTool")).isTrue();
     }
+
+    @Test
+    void registersPreparationOnlyScheduleToolsAndChatExtension() {
+        var registry=context.getBean(io.jmix.aitools.tool.AiToolRegistry.class);
+        assertThat(registry.findByName("startScheduleImport")).isPresent();
+        assertThat(registry.findByName("previewScheduleImport")).isPresent();
+        assertThat(registry.getAllCallbacks().stream().map(t->t.getToolDefinition().name()))
+                .noneMatch(name->name.toLowerCase(java.util.Locale.ROOT).contains("commitschedule") || name.toLowerCase(java.util.Locale.ROOT).contains("confirmschedule"));
+        assertThat(context.getBean(io.jmix.aitoolsflowui.service.AiChatService.class)).isInstanceOf(ScheduleAiChatDataService.class);
+    }
 }

@@ -13,6 +13,7 @@ import java.util.*;
 
 @Service
 public class ScheduleAttachmentService {
+    public record SubmittedAttachment(UUID id,String fileName,long sizeBytes) {}
     private final UnconstrainedDataManager data;
     private final ScheduleImportOwnership ownership;
     private final ScheduleImportProperties properties;
@@ -44,6 +45,40 @@ public class ScheduleAttachmentService {
         var attachment=owned(attachmentId);
         if(attachment.getFileDeletedAt()!=null || attachment.getRemovalRequestedAt()!=null) throw new IllegalStateException("File is unavailable");
         return storages.getByName(attachment.getFileRef().getStorageName()).openStream(attachment.getFileRef());
+    }
+    /** Called by the UI after native USER persistence and before AI processing. Never a model tool. */
+    @Transactional
+    public void bindToMessage(UUID attachmentId, UUID userMessageId) {
+        var attachment=owned(attachmentId);
+        ownership.userMessage(userMessageId, attachment.getOriginalConversationId());
+        // Serialise separate staged files binding to the same actual submission.
+        data.load(io.jmix.aitoolsflowuidata.entity.AiChatMessageEntity.class).id(userMessageId)
+                .lockMode(LockModeType.PESSIMISTIC_WRITE).one();
+        if(attachment.getSourceMessageId()!=null && !attachment.getSourceMessageId().equals(userMessageId))
+            throw new SecurityException("Attachment is already bound to another submission");
+        if(attachment.getFileDeletedAt()!=null || attachment.getRemovalRequestedAt()!=null)
+            throw new IllegalStateException("File is unavailable");
+        var others=forMessage(attachment.getOriginalConversationId(),userMessageId);
+        if(others.stream().anyMatch(e->!e.id().equals(attachmentId)))
+            throw new IllegalStateException("Only one attachment per submission is supported");
+        attachment.setSourceMessageId(userMessageId);data.saveWithoutReload(attachment);
+    }
+    @Transactional
+    public List<SubmittedAttachment> forMessage(UUID conversationId,UUID userMessageId) {
+        ownership.userMessage(userMessageId,conversationId);
+        return data.load(AiScheduleAttachment.class)
+                .query("select e from AiScheduleAttachment e where e.originalConversationId=:conversation and e.sourceMessageId=:message and e.fileDeletedAt is null and e.removalRequestedAt is null")
+                .parameter("conversation",conversationId).parameter("message",userMessageId).list().stream()
+                .map(e->new SubmittedAttachment(e.getId(),e.getFileName(),e.getSizeBytes())).toList();
+    }
+    @Transactional
+    public String boundFileName(UUID attachmentId,UUID conversationId,UUID userMessageId) {
+        var attachment=owned(attachmentId);
+        ownership.userMessage(userMessageId,conversationId);
+        if(!conversationId.equals(attachment.getOriginalConversationId()) || !userMessageId.equals(attachment.getSourceMessageId()))
+            throw new SecurityException("Attachment is unavailable for this submission");
+        if(attachment.getFileDeletedAt()!=null || attachment.getRemovalRequestedAt()!=null)throw new IllegalStateException("File is unavailable");
+        return attachment.getFileName();
     }
     @Transactional
     public void remove(UUID attachmentId) {

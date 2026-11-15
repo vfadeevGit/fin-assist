@@ -20,7 +20,8 @@ import java.util.UUID;
 @JmixEntity
 @Table(name = "AI_SCHEDULE_ATTACHMENT", indexes = {
         @Index(name = "IDX_AI_SCHEDULE_ATTACHMENT_ORIGINAL_CONV", columnList = "ORIGINAL_CONVERSATION_ID"),
-        @Index(name = "IDX_AI_SCHEDULE_ATTACHMENT_CONVERSATION", columnList = "CONVERSATION_ID")
+        @Index(name = "IDX_AI_SCHEDULE_ATTACHMENT_CONVERSATION", columnList = "CONVERSATION_ID"),
+        @Index(name = "IDX_AI_SCHEDULE_ATTACHMENT_MESSAGE", columnList = "SOURCE_MESSAGE_ID")
 })
 @Entity
 public class AiScheduleAttachment {
@@ -47,6 +48,10 @@ public class AiScheduleAttachment {
     @NotNull
     @Column(name = "ORIGINAL_CONVERSATION_ID", nullable = false, updatable = false)
     private UUID originalConversationId;
+
+    /** Server-bound provenance; scalar ID intentionally survives native chat deletion. */
+    @Column(name = "SOURCE_MESSAGE_ID")
+    private UUID sourceMessageId;
 
     @CreatedBy
     @Column(name = "CREATED_BY")
@@ -83,6 +88,8 @@ public class AiScheduleAttachment {
     private OffsetDateTime fileDeletedAt;
 
     public UUID getId() { return id; }
+    public UUID getSourceMessageId() { return sourceMessageId; }
+    public void setSourceMessageId(UUID value) { sourceMessageId = value; }
     public void setId(UUID value) { id = value; }
     public Integer getVersion() { return version; }
     public void setVersion(Integer value) { version = value; }

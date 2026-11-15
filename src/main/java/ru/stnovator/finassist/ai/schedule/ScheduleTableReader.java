@@ -143,6 +143,15 @@ public class ScheduleTableReader {
 
     private void validateMapping(Mapping mapping) {
         if (mapping == null) throw failure("file", "MAPPING_REQUIRED");
+        if (mapping.formats() != null) {
+            var options = mapping.formats();
+            if (options.datePattern() == null || options.datePattern().isBlank()
+                    || (options.decimalSeparator() != '.' && options.decimalSeparator() != ',')
+                    || options.groupingSeparator() == options.decimalSeparator()
+                    || Character.isDigit(options.groupingSeparator())) throw failure("file", "INVALID_PARSE_OPTIONS");
+            try { DateTimeFormatter.ofPattern(options.datePattern()); }
+            catch (IllegalArgumentException ex) { throw failure("file", "INVALID_PARSE_OPTIONS"); }
+        }
         if (mapping.sheetKey() == null || mapping.dateColumn() < 0 || mapping.amountColumn() < 0
                 || mapping.dateColumn() == mapping.amountColumn() || mapping.firstDataRow() < 0
                 || mapping.firstDataRow() > SAMPLE_ROWS || mapping.dateColumn() >= limits.getMaxColumns()
