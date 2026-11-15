@@ -373,6 +373,27 @@ class ScheduleImportUiTest {
     }
 
     @Test
+    void confirmationKeepsSnapshotSummaryWhenResultLinkIsUnavailable() {
+        var ui = com.vaadin.flow.component.UI.getCurrent();
+        var previousLocale = ui.getLocale();
+        ui.setLocale(Locale.forLanguageTag("ru-RU"));
+        try {
+            when(commit.confirm(operation, 7)).thenReturn(new ScheduleImportCommitService.CommitResult(operation, "Addendum", UUID.randomUUID(), false));
+            // Resolver's empty result represents a missing or inaccessible destination.
+            panel.getConfirmButton().click();
+            assertThat(panel.getResult()).isNotNull();
+            var visible = panel.getChildren().flatMap(com.vaadin.flow.component.Component::getChildren)
+                    .filter(com.vaadin.flow.component.html.Span.class::isInstance)
+                    .map(com.vaadin.flow.component.html.Span.class::cast).map(com.vaadin.flow.component.html.Span::getText).toList();
+            assertThat(visible).anySatisfy(text -> assertThat(text.replace('\u00a0', ' ').replace('\u202f', ' '))
+                    .contains("Сохранено дополнительное соглашение", "Строк: 150", "Итого: 1 851,00"));
+            assertThat(visible).contains("Ссылка на сохранённый результат недоступна");
+        } finally {
+            ui.setLocale(previousLocale);
+        }
+    }
+
+    @Test
     void confirmInvokesOnlyDisplayedRevision() {
         when(commit.confirm(operation, 7)).thenReturn(new ScheduleImportCommitService.CommitResult(operation, "PaymentSchedule", UUID.randomUUID(), false));
         panel.getConfirmButton().click();

@@ -11,6 +11,8 @@ import ru.stnovator.finassist.ai.EntityLinksTool;
 import ru.stnovator.finassist.ai.schedule.*;
 import ru.stnovator.finassist.service.ScheduleComparison;
 
+import java.math.BigDecimal;
+import java.text.NumberFormat;
 import java.util.*;
 import java.util.function.Consumer;
 
@@ -182,7 +184,7 @@ public class ScheduleImportPanel extends VerticalLayout {
             status.setText(text("saved"));
             correct.setEnabled(false);
             cancel.setEnabled(false);
-            addLink(receipts, result.entityName(), result.entityId(), preview.kind(), preview.mode());
+            addReceipt(result.entityName(), result.entityId(), preview.kind(), preview.mode(), preview.rows().size(), preview.total());
         }
         catch (RuntimeException unavailable) {
             fail();
@@ -206,14 +208,27 @@ public class ScheduleImportPanel extends VerticalLayout {
         var current = owned(receipt.operationId());
         if (current.status() != Status.SAVED || current.resultId() == null) return;
         String entity = current.content().mode() == Mode.ADDENDUM ? "Addendum" : current.content().kind() == Kind.PAYMENT ? "PaymentSchedule" : "ShipmentSchedule";
-        addLink(receipts, entity, current.resultId(), current.content().kind(), current.content().mode());
+        var content = current.content();
+        addReceipt(entity, current.resultId(), content.kind(), content.mode(), content.rows().size(),
+                content.rows().stream().map(Row::amount).reduce(BigDecimal.ZERO, BigDecimal::add));
     }
 
-    private void addLink(VerticalLayout target, String entity, UUID id, Kind kind, Mode mode) {
-        var resolved = links.getEntityLinks(entity, List.of(id.toString()));
-        if (resolved != null)
-            resolved.stream().filter(EntityLinksTool.Link::available)
-                    .forEach(link -> target.add(new Anchor(link.url(), text(mode == Mode.ADDENDUM ? "savedADDENDUM" : "saved" + kind))));
+    private void addReceipt(String entity, UUID id, Kind kind, Mode mode, int rowCount, BigDecimal total) {
+        String caption = text(mode == Mode.ADDENDUM ? "savedADDENDUM" : "saved" + kind);
+        var money = NumberFormat.getNumberInstance(getLocale());
+        money.setMinimumFractionDigits(2);
+        money.setMaximumFractionDigits(2);
+        receipts.add(new Span(caption + " · " + text("rowCount") + ": " + NumberFormat.getIntegerInstance(getLocale()).format(rowCount)
+                + " · " + text("total") + ": " + money.format(total)));
+        EntityLinksTool.Link destination = null;
+        try {
+            var resolved = links.getEntityLinks(entity, List.of(id.toString()));
+            if (resolved != null) destination = resolved.stream().filter(EntityLinksTool.Link::available).findFirst().orElse(null);
+        } catch (RuntimeException unavailable) {
+            // A failed link lookup must not hide the owned receipt or turn a committed save into a failure.
+        }
+        if (destination == null) receipts.add(new Span(text("resultUnavailable")));
+        else receipts.add(new Anchor(destination.url(), caption));
     }
 
     private void fail() {

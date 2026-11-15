@@ -150,7 +150,7 @@ CRM использует `upload` с `FILE_TEMPORARY_STORAGE`, переноси�
 6. SaveContext/транзакция охватывают весь состав. Ошибка любой записи, валидации или конфликта откатывает всё; для замены восстанавливается исходное состояние без потери старых строк.
 7. Уникальность номера/даты Addendum и требование даты позже всех существующих корректировок выбранного проекта и типа проверяются перед предпросмотром и окончательно при записи. В проверку входят и соглашения с будущей датой. Конфликт требует исправления реквизитов и повторного подтверждения; новая корректировка, появившаяся после предпросмотра, не должна обходить запрет.
 8. Изменения суммы/срока контракта не выводятся из графика. `amountAdjustment` и `newEndDate` нового Addendum остаются пустыми; существующие проверки условий контракта сохраняются.
-9. После подтверждённого commit сообщить успех, число строк, итог и ссылку; при ошибке не заявлять о создании объектов. Вложения и неиспользованные черновики очищаются по выбранной политике хранения.
+9. После подтверждённого commit сообщить успех, число строк, итог и доступную ссылку; при ошибке не заявлять о создании объектов. После reload показывать owned-квитанцию с числом строк и итогом сохранённого снимка. Если ссылка недоступна, квитанция остаётся видимой с нейтральным сообщением без чтения текущих недоступных доменных данных. Вложения и неиспользованные черновики очищаются по выбранной политике хранения.
 
 ## 9. Критерии приёмки
 
@@ -243,4 +243,30 @@ CRM использует `upload` с `FILE_TEMPORARY_STORAGE`, переноси�
 - Миграции: исходный сквозной сценарий отдельно прошёл на пустой `finassist_task11_empty_20261116` и на `finassist_task11_upgrade_20261116`. Второй — отдельная `pg_dump`/`pg_restore` копия disposable test DB, в которой только внутри копии удалены колонка/index и запись changelog последней message-binding миграции; это реконструкция предыдущей схемы, не архив реальной production БД. После старта проверены все пять changeset в трёх AI migration-файлах, nullable UUID `source_message_id` и `idx_ai_schedule_attachment_message`. Исходная shared schema не откатывалась. Обе новые БД удалены; owned drafts/chats после теста отсутствовали. Более ранние additive retention-миграции и предыдущая test schema дополнительно проверялись в задаче 5.
 - Gate 1 нового Java test: explicit-project IDE inspection, warnings enabled — нет ошибок, unresolved API/property paths; ожидаемые предупреждения о `BandData` как internal report API и необязательная style-подсказка `HashMap<>`. `BandData` используется только для действительных report delegate входов, как в существующих report tests. Production symbols и UI descriptors проверены в задачах 1–10. Непустые файлы, Markdown/local links и `git diff --check` проверяются при завершении.
 - Desktop browser evidence задачи 10 относится к Jmix 3.1/Vaadin 25, admin и disposable DB: `/tmp/task10-text-preview.png`, `/tmp/task10-stale-rejected.png`, `/tmp/task10-restored-receipts.png`, `/tmp/task10-plus-menu.png`. После визуальной проверки controller исправлены технические подписи ссылок; финальные локализованные подписи проверены headless regression test. После lifecycle fixes выполнены 22 UI tests. Полный browser walk после этих server-side/caption изменений не повторялся; mobile/responsive QA и отдельный browser login finance manager не заявляются. XLS проверен серверными tests, browser использовал CSV/XLSX. Доступ к 150 строкам проверен headless provider test, browser fixtures имели по две строки.
-- Не проверялись качество распознавания живой моделью, deployed container upload permissions и fault injection ошибки физического удаления файла; retry очистки разобран статически. Все HTTP model ответы scripted, поэтому это проверка протокола/tool execution и инвариантов, не оценка качества LLM. Задача 11 новых UI/role/production файлов не добавляет. Итоговое независимое ревью всей ветки остаётся открытым.
+- Не проверялись качество распознавания живой моделью, deployed container upload permissions и fault injection ошибки физического удаления файла; retry очистки разобран статически. Все HTTP model ответы scripted, поэтому это проверка протокола/tool execution и инвариантов, не оценка качества LLM. Задача 11 новых UI/role/production файлов не добавляет. Результат последующего ревью и его узкие исправления — в разделе 14.
+
+## 14. Итоговое ревью и исправление результата импорта — 2026-11-16
+
+Ревью всей ветки `a50a276..c4a2792` обнаружило отсутствие `PaymentSchedule.detail` и `ShipmentSchedule.detail` у штатного `FinanceManagerRole`: сохранение базы разрешено, а `EntityLinksTool` корректно не выдаёт ссылку без view policy. Добавляются только эти две политики экранов; CRUD/attribute/row-level права и сам resolver не расширяются.
+
+После commit и reload UI показывает локализованное подтверждение, число строк и итог из доверенного preview либо owned сохранённого снимка. Снимок остаётся историческим после ручного изменения графика. При отсутствии ссылки квитанция остаётся видимой; её восстановление не читает текущие недоступные данные графика. `ScheduleImportResultUiTest` использует настоящие workflow/store/commit и `EntityLinksTool`, реального сохранённого пользователя с единственной business authority `ROLE_finance-manager-role`, оба типа базы, переход по маршрутам, reload и отзыв доменного READ. Отдельный UI regression проверяет отсутствие ссылки сразу после commit Addendum.
+
+RED: четыре новых real-service cases упали ожидаемо (две отсутствующие ссылки, две пустые квитанции); отдельный Addendum fallback case упал из-за отсутствующей сводки. GREEN: три целевых класса — **35 tests, 3 suites, 0 failures/errors/skips**, BUILD SUCCESSFUL. Финальный `./gradlew clean test` на окончательных исходниках — **BUILD SUCCESSFUL за 4m 14s; 40 suites, 384 tests, 0 failures/errors/skips** по всем JUnit XML. SHA-256 всех пяти изменённых source/resource файлов совпали до/после полного запуска; повторный запуск новых cases входит в эту полную команду. Read-only cleanup audit после запуска: owned result drafts/conversations/users и fixture contracts — **0**. Scoped повторное ревью исправления пока не принято.
+
+Minor про вызов mutating `ReadEntityQueryContext.getResultQuery()` внутри technical-probe constraints сознательно отложен по controller ruling: в pinned Jmix 3.1 исходный query хранится в protected `originalQuery`, публичного немутирующего accessor нет. Не доказан обход авторизации; обычный JOIN dedup уже проверен. Reflection, замена framework-класса и ослабление technical security в эту правку не входят.
+
+Воспроизводимые значения локального disposable test environment (не production; AI key/model — dummy):
+
+```sh
+export MAIN_DATASOURCE_URL=jdbc:postgresql://127.0.0.1:55439/finassist_ai_test
+export MAIN_DATASOURCE_USERNAME=finassist_test
+export MAIN_DATASOURCE_PASSWORD=''
+export OPENAI_API_KEY=test-key
+export OPENAI_MODEL=test-model
+export OPENAI_BASE_URL=http://127.0.0.1:1
+./gradlew clean test
+```
+
+База должна существовать и разрешать локальное подключение указанного test user; migrations применяются тестовым context. Script `.superpowers/sdd/2026-11-15-ai-schedule-creation/test-env.sh` — временный эквивалент этих exports, удаляется при завершении SDD и не является обязательной зависимостью инструкции.
+
+- [ ] Scoped повторное ревью финального исправления controller.
