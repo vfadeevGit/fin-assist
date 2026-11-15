@@ -1,6 +1,6 @@
 # Spec 005 — Создание графиков через AI Tools
 
-Статус: реализация задач 1–10 завершена и прошла независимые ревью; сквозная приёмка задачи 11 и общий test gate выполнены (379 tests, 0 failures/errors/skips). Независимое ревью задачи 11 ожидается. Итоговое ревью всей ветки ожидается. Фактические свидетельства и ограничения — раздел 13.
+Статус: реализовано; все 11 задач и итоговая ветка прошли независимые ревью. Финальный clean test: 384 tests, 40 suites, 0 failures/errors/skips. Critical/Important замечаний не осталось; одно неблокирующее замечание по материализации JPQL отложено (раздел 14).
 Дата: 2026-11-15.
 Ветка: `feature/ai-schedule-creation`.
 Проверенная база кода: `a50a276`.
@@ -251,7 +251,7 @@ CRM использует `upload` с `FILE_TEMPORARY_STORAGE`, переноси�
 
 После commit и reload UI показывает локализованное подтверждение, число строк и итог из доверенного preview либо owned сохранённого снимка. Снимок остаётся историческим после ручного изменения графика. При отсутствии ссылки квитанция остаётся видимой; её восстановление не читает текущие недоступные данные графика. `ScheduleImportResultUiTest` использует настоящие workflow/store/commit и `EntityLinksTool`, реального сохранённого пользователя с единственной business authority `ROLE_finance-manager-role`, оба типа базы, переход по маршрутам, reload и отзыв доменного READ. Отдельный UI regression проверяет отсутствие ссылки сразу после commit Addendum.
 
-RED: четыре новых real-service cases упали ожидаемо (две отсутствующие ссылки, две пустые квитанции); отдельный Addendum fallback case упал из-за отсутствующей сводки. GREEN: три целевых класса — **35 tests, 3 suites, 0 failures/errors/skips**, BUILD SUCCESSFUL. Финальный `./gradlew clean test` на окончательных исходниках — **BUILD SUCCESSFUL за 4m 14s; 40 suites, 384 tests, 0 failures/errors/skips** по всем JUnit XML. SHA-256 всех пяти изменённых source/resource файлов совпали до/после полного запуска; повторный запуск новых cases входит в эту полную команду. Read-only cleanup audit после запуска: owned result drafts/conversations/users и fixture contracts — **0**. Scoped повторное ревью исправления пока не принято.
+RED: четыре новых real-service cases упали ожидаемо (две отсутствующие ссылки, две пустые квитанции); отдельный Addendum fallback case упал из-за отсутствующей сводки. GREEN: три целевых класса — **35 tests, 3 suites, 0 failures/errors/skips**, BUILD SUCCESSFUL. Финальный `./gradlew clean test` на окончательных исходниках — **BUILD SUCCESSFUL за 4m 14s; 40 suites, 384 tests, 0 failures/errors/skips** по всем JUnit XML. SHA-256 всех пяти изменённых source/resource файлов совпали до/после полного запуска; повторный запуск новых cases входит в эту полную команду. Read-only cleanup audit после запуска: owned result drafts/conversations/users и fixture contracts — **0**. Scoped повторное ревью исправления принято: все обязательные замечания устранены, новых блокирующих дефектов нет; итоговый вердикт — Ready to merge: Yes.
 
 Minor про вызов mutating `ReadEntityQueryContext.getResultQuery()` внутри technical-probe constraints сознательно отложен по controller ruling: в pinned Jmix 3.1 исходный query хранится в protected `originalQuery`, публичного немутирующего accessor нет. Не доказан обход авторизации; обычный JOIN dedup уже проверен. Reflection, замена framework-класса и ослабление technical security в эту правку не входят.
 
@@ -269,4 +269,4 @@ export OPENAI_BASE_URL=http://127.0.0.1:1
 
 База должна существовать и разрешать локальное подключение указанного test user; migrations применяются тестовым context. Script `.superpowers/sdd/2026-11-15-ai-schedule-creation/test-env.sh` — временный эквивалент этих exports, удаляется при завершении SDD и не является обязательной зависимостью инструкции.
 
-- [ ] Scoped повторное ревью финального исправления controller.
+- [x] Scoped повторное ревью финального исправления принято; Critical/Important замечаний нет.
