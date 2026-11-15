@@ -4,7 +4,7 @@ import io.jmix.aitoolsflowuidata.entity.AiConversationEntity;
 import io.jmix.aitoolsflowuidata.entity.AiChatMessageEntity;
 import io.jmix.aitoolsflowuidata.entity.AiChatMessageEntityType;
 import io.jmix.core.UnconstrainedDataManager;
-import io.jmix.core.security.CurrentAuthentication;
+import io.jmix.core.usersubstitution.CurrentUserSubstitution;
 import org.springframework.stereotype.Component;
 import java.util.UUID;
 
@@ -12,11 +12,11 @@ import java.util.UUID;
 @Component
 public class ScheduleImportOwnership {
     private final UnconstrainedDataManager data;
-    private final CurrentAuthentication authentication;
-    public ScheduleImportOwnership(UnconstrainedDataManager data, CurrentAuthentication authentication) {
+    private final CurrentUserSubstitution authentication;
+    public ScheduleImportOwnership(UnconstrainedDataManager data, CurrentUserSubstitution authentication) {
         this.data = data; this.authentication = authentication;
     }
-    public String username() { return authentication.getUser().getUsername(); }
+    public String username() { return authentication.getEffectiveUser().getUsername(); }
     public AiConversationEntity conversation(UUID id) {
         var conversation = data.load(AiConversationEntity.class).id(id).optional()
                 .orElseThrow(() -> new SecurityException("Conversation is unavailable"));

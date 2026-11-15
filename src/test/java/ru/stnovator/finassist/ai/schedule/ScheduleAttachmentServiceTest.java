@@ -46,6 +46,16 @@ class ScheduleAttachmentServiceTest {
         assertThatThrownBy(()->service.remove(attachment)).isInstanceOf(SecurityException.class);
         assertThatThrownBy(()->service.stage(conversation,"a.csv",InputStream.nullInputStream())).isInstanceOf(SecurityException.class);
     }
+    @Test void substitutedEffectiveOwnerCanStageAndOpenButOriginalActorCannot() throws Exception {
+        var operator=data.create(User.class);operator.setUsername("attachment-operator-"+UUID.randomUUID());DashboardFixtures.authenticate(operator,"ROLE_system-full-access");
+        var original=Objects.requireNonNull(org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication());
+        var effective=data.create(User.class);effective.setUsername(owner);
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(new io.jmix.core.security.impl.SubstitutedUserAuthenticationToken(original,effective,List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_finance-manager-role"))));
+        UUID attachment=stage();assertThat(data.load(AiScheduleAttachment.class).id(attachment).one().getOwner()).isEqualTo(owner);
+        try(var input=service.open(attachment)){assertThat(new String(input.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8)).isEqualTo("date;amount");}
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(original);
+        assertThatThrownBy(()->{try(var input=service.open(attachment)){input.read();}}).isInstanceOf(SecurityException.class);assertThatThrownBy(()->service.remove(attachment)).isInstanceOf(SecurityException.class);
+    }
     @Test void storedFileSurvivesReloadAndHasStableLink() throws Exception {
         UUID attachment=stage();UUID operation=store.create(conversation);store.update(operation,0,content(attachment));
         try(var stream=service.open(store.load(operation).content().source())) {assertThat(new String(stream.readAllBytes())).isEqualTo("date;amount");}

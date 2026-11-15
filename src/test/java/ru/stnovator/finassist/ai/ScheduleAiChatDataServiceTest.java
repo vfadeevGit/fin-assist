@@ -28,6 +28,7 @@ class ScheduleAiChatDataServiceTest {
     @Autowired SystemAuthenticator auth;
     @Autowired ScheduleImportStore store;
     @Autowired DataManager secured;
+    @Autowired ScheduleImportTool imports;
     UUID conversation,message;Object originalClient;
     final String owner="chat-"+UUID.randomUUID();
     @BeforeEach void setup(){auth.begin("admin");var c=data.create(AiConversationEntity.class);c.setUsername(owner);c.setTitle("chat");conversation=data.save(c).getId();var u=data.create(User.class);u.setUsername(owner);DashboardFixtures.authenticate(u,"ROLE_finance-manager-role");message=message("current input");originalClient=ReflectionTestUtils.getField(service,"chatClient");}
@@ -61,6 +62,50 @@ class ScheduleAiChatDataServiceTest {
         var ui=data.create(io.jmix.aitoolsflowui.model.AiChatMessage.class);ui.setId(message);
         assertThat(service.processMessage(ui,updates::add)).isEqualTo("Ready");assertThat(updates).hasSize(1);
         assertThat(data.load(AiChatMessageEntity.class).query("select e from aitls_AiChatMessageEntity e where e.conversation.id=:c and e.type=:type").parameter("c",conversation).parameter("type",AiChatMessageEntityType.ASSISTANT.getId()).list()).singleElement().extracting(AiChatMessageEntity::getContent).isEqualTo("Ready");
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"removed","hidden","reassigned"})
+    void invalidSelectionDoesNotBlockOrdinaryChatOrCancellation(String invalidation) {
+        try(var target=new ru.stnovator.finassist.test_support.RelatedFixtures(secured,auth);
+            var fixture=new ru.stnovator.finassist.test_support.RelatedFixtures(secured,auth)) {
+            var draft=workflow.start(conversation,ScheduleImportTypes.Kind.PAYMENT);
+            draft=workflow.setRows(draft.operationId(),draft.revision(),List.of(new ScheduleImportTypes.InputRow("2026-06-01","120","input")),null);
+            workflow.selectContract(draft.operationId(),draft.revision(),fixture.contract.getId());draft=store.load(draft.operationId());
+            var preview=workflow.preview(draft.operationId(),draft.revision(),ScheduleImportTypes.Mode.FILL,null,null);
+            if(invalidation.equals("removed"))secured.remove(fixture.project);
+            else if(invalidation.equals("hidden")){var u=data.create(User.class);u.setUsername(owner);DashboardFixtures.restricted(u,"chat-deny-project");}
+            else {var project=secured.load(Project.class).id(fixture.project.getId()).one();project.setContract(target.contract);secured.saveWithoutReload(project);}
+            var state=imports.conversationState(conversation).getFirst();assertThat(state.nextRequired()).isEqualTo("SELECTION_UNAVAILABLE");
+            assertThat(state.contractId()).isNull();assertThat(state.projectId()).isNull();assertThat(state.mode()).isNull();assertThat(state.modes()).isEmpty();assertThat(state.total()).isNull();assertThat(state.addendumNumber()).isNull();assertThat(state.effectiveDate()).isNull();
+            assertThat(state.kind()).isNull();assertThat(state.source()).isNull();assertThat(state.sourceMessageId()).isNull();assertThat(state.mapping()).isNull();assertThat(state.rowCount()).isZero();
+            ChatModel model=mock(ChatModel.class);when(model.getOptions()).thenReturn(ToolCallingChatOptions.builder().build());
+            when(model.call(any(Prompt.class))).thenAnswer(invocation->{Prompt prompt=invocation.getArgument(0);assertThat(prompt.getContents()).contains("current input","SELECTION_UNAVAILABLE").doesNotContain(fixture.contract.getId().toString(),fixture.project.getId().toString());return new ChatResponse(List.of(new Generation(new AssistantMessage("Ready"))));});
+            ReflectionTestUtils.setField(service,"chatClient",ChatClient.builder(model).build());var ui=data.create(io.jmix.aitoolsflowui.model.AiChatMessage.class);ui.setId(message);
+            assertThat(service.processMessage(ui)).isEqualTo("Ready");
+            var assistant=data.load(AiChatMessageEntity.class).query("select e from aitls_AiChatMessageEntity e where e.conversation.id=:c and e.type=:type").parameter("c",conversation).parameter("type",AiChatMessageEntityType.ASSISTANT.getId()).one();
+            var context=new ToolContext(Map.of("assistantMessageId",assistant.getId(),ScheduleChatContext.USER_MESSAGE_ID,message));
+            UUID operation=preview.operationId();long revision=preview.revision();
+            assertThatThrownBy(()->imports.previewScheduleImport(operation,revision,ScheduleImportTypes.Mode.FILL,null,null,context)).isInstanceOf(RuntimeException.class);
+            var cancelled=imports.cancelScheduleImport(operation,revision,context).state();assertThat(cancelled.nextRequired()).isEqualTo("CLOSED");assertThat(cancelled.contractId()).isNull();assertThat(cancelled.projectId()).isNull();
+        }
+    }
+    @Test void substitutedUserUsesNativeChatOwnershipAndTechnicalConstraints() {
+        var effective=data.create(User.class);effective.setUsername(owner);var operator=data.create(User.class);operator.setUsername("operator-"+UUID.randomUUID());DashboardFixtures.authenticate(operator,"ROLE_system-full-access");
+        var original=Objects.requireNonNull(org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication());
+        var token=new io.jmix.core.security.impl.SubstitutedUserAuthenticationToken(original,effective,List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_finance-manager-role")));
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(token);
+        ChatModel model=mock(ChatModel.class);when(model.getOptions()).thenReturn(ToolCallingChatOptions.builder().build());when(model.call(any(Prompt.class))).thenReturn(new ChatResponse(List.of(new Generation(new AssistantMessage("Ready")))));
+        ReflectionTestUtils.setField(service,"chatClient",ChatClient.builder(model).build());var ui=data.create(io.jmix.aitoolsflowui.model.AiChatMessage.class);ui.setId(message);
+        assertThat(service.processMessage(ui)).isEqualTo("Ready");
+        var assistant=data.load(AiChatMessageEntity.class).query("select e from aitls_AiChatMessageEntity e where e.conversation.id=:c and e.type=:type").parameter("c",conversation).parameter("type",AiChatMessageEntityType.ASSISTANT.getId()).one();
+        var result=imports.startScheduleImport(ScheduleImportTypes.Kind.PAYMENT,new ToolContext(Map.of("assistantMessageId",assistant.getId(),ScheduleChatContext.USER_MESSAGE_ID,message)));
+        UUID operation=result.state().operationId();assertThat(data.load(AiScheduleImport.class).id(operation).one().getOwner()).isEqualTo(owner);assertThat(secured.load(AiScheduleImport.class).id(operation).optional()).isPresent();
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(original);
+        assertThatThrownBy(()->store.load(operation)).isInstanceOf(SecurityException.class);assertThat(secured.load(AiScheduleImport.class).id(operation).optional()).isEmpty();assertThatThrownBy(()->service.processMessage(ui)).isInstanceOf(io.jmix.core.security.AccessDeniedException.class);
+    }
+    @io.jmix.security.role.annotation.RowLevelRole(name="Chat deny project",code="chat-deny-project")
+    public interface DenyProject {
+        @io.jmix.security.role.annotation.JpqlRowLevelPolicy(entityClass=Project.class,where="1=0") void projects();
     }
     @Test void mockModelOrchestratesDataContractProjectModeDetailsPreviewWithoutSaving() {
         try(var fixture=new ru.stnovator.finassist.test_support.RelatedFixtures(secured,auth)) {

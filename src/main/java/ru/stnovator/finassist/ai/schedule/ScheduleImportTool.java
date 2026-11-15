@@ -3,10 +3,12 @@ package ru.stnovator.finassist.ai.schedule;
 import io.jmix.aitools.tool.AiToolStatusPublisher;
 import io.jmix.aitools.tool.JmixAiTool;
 import io.jmix.core.UnconstrainedDataManager;
+import io.jmix.core.security.AccessDeniedException;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 import ru.stnovator.finassist.entity.AiScheduleImport;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -115,11 +117,12 @@ public class ScheduleImportTool implements JmixAiTool {
         current(operationId,revision,context);store.cancel(operationId,revision);return result(store.load(operationId));
     }
     /** Server prompt state, independent of the framework's history window. Contains summaries, never file instructions. */
+    @Transactional(propagation=Propagation.NOT_SUPPORTED)
     public List<State> conversationState(UUID conversationId) {
         ownership.conversation(conversationId);
         return data.load(AiScheduleImport.class).query("select e from AiScheduleImport e where e.originalConversationId=:conversation and e.owner=:owner and e.status in :statuses order by e.touchedAt desc")
                 .parameter("conversation",conversationId).parameter("owner",ownership.username()).parameter("statuses",List.of(Status.COLLECTING.name(),Status.PREVIEW_READY.name()))
-                .list().stream().map(e->state(store.load(e.getId()))).toList();
+                .list().stream().map(e->restoredState(store.load(e.getId()))).toList();
     }
     private Draft current(UUID operationId,long revision,ToolContext context) {
         var submission=contexts.resolve(context);var draft=store.load(operationId);
@@ -130,9 +133,21 @@ public class ScheduleImportTool implements JmixAiTool {
     }
     private Result result(Draft draft){return new Result(state(draft),List.of(),null,List.of(),null,null);}
     private Result issues(Draft draft,List<Issue> issues){return new Result(state(draft),List.of(),null,issues,null,"Correct the source or mapping; no partial rows accepted");}
+    private State restoredState(Draft draft) {
+        // Selection hydration is optional for chat. Its strict workflow transaction has ended before
+        // this expected access failure is caught, so it cannot leave the caller rollback-only.
+        try { return state(draft); }
+        catch (AccessDeniedException unavailable) { return redacted(draft,"SELECTION_UNAVAILABLE"); }
+    }
+    private State redacted(Draft draft,String nextRequired) {
+        return new State(draft.operationId(),draft.revision(),draft.status(),null,null,null,null,0,null,null,null,Set.of(),null,null,null,nextRequired);
+    }
     private State state(Draft draft) {
-        var c=draft.content();Set<Mode> modes=c.projectId()==null || (draft.status()!=Status.COLLECTING && draft.status()!=Status.PREVIEW_READY)?Set.of():workflow.allowedModes(draft.operationId());
-        String next=draft.status()==Status.PREVIEW_READY?"UI_CONFIRMATION":draft.status()!=Status.COLLECTING?"CLOSED":c.rows().isEmpty()?(c.source()==null?"ROWS":"MAPPING"):c.contractId()==null?"CONTRACT":c.projectId()==null?"PROJECT":c.mode()==Mode.ADDENDUM&&(c.addendumNumber()==null||c.addendumNumber().isBlank()||c.effectiveDate()==null)?"ADDENDUM_DETAILS":"MODE";
+        var selection=workflow.selectionState(draft.operationId());
+        draft=selection.draft();
+        if(draft.status()!=Status.COLLECTING && draft.status()!=Status.PREVIEW_READY)return redacted(draft,"CLOSED");
+        var c=draft.content();Set<Mode> modes=selection.modes();
+        String next=draft.status()==Status.PREVIEW_READY?"UI_CONFIRMATION":c.rows().isEmpty()?(c.source()==null?"ROWS":"MAPPING"):c.contractId()==null?"CONTRACT":c.projectId()==null?"PROJECT":c.mode()==Mode.ADDENDUM&&(c.addendumNumber()==null||c.addendumNumber().isBlank()||c.effectiveDate()==null)?"ADDENDUM_DETAILS":"MODE";
         return new State(draft.operationId(),draft.revision(),draft.status(),c.kind(),c.source(),c.sourceMessageId(),c.mapping(),c.rows().size(),c.rows().stream().map(Row::amount).reduce(BigDecimal.ZERO,BigDecimal::add),c.contractId(),c.projectId(),modes,c.mode(),c.addendumNumber(),c.effectiveDate(),next);
     }
 }
