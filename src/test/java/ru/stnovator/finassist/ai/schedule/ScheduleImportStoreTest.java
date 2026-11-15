@@ -51,6 +51,23 @@ class ScheduleImportStoreTest {
         assertThat(resumed.status()).isEqualTo(ScheduleImportStore.Status.COLLECTING);
         assertThat(internal.load(AiScheduleImport.class).id(id).one().getContentJson()).contains("schemaVersion");
     }
+    @Test void savedReceiptsRestoreOnlyTheirOwnedConversationInDeterministicOrder() {
+        var other=internal.create(AiConversationEntity.class); other.setUsername(owner); other.setTitle("receipt-other"); other=internal.save(other);
+        UUID first=store.create(conversation), second=store.create(conversation), elsewhere=store.create(other.getId());
+        for(UUID id:List.of(first,second,elsewhere)) {
+            var row=internal.load(AiScheduleImport.class).id(id).one(); row.setStatus("SAVED");
+            row.setTerminalAt(OffsetDateTime.parse("2026-11-15T00:00:00Z")); internal.saveWithoutReload(row);
+        }
+        try {
+            var ids=List.of(first,second).stream().sorted(Comparator.comparing(UUID::toString)).toList();
+            assertThat(store.savedForConversation(conversation)).extracting(ScheduleImportStore.Draft::operationId).containsExactlyElementsOf(ids);
+            assertThat(store.savedForConversation(other.getId())).extracting(ScheduleImportStore.Draft::operationId).containsExactly(elsewhere);
+            login("receipt-intruder");
+            assertThatThrownBy(()->store.savedForConversation(conversation)).isInstanceOf(SecurityException.class);
+        } finally {
+            internal.remove(internal.load(AiScheduleImport.class).id(elsewhere).one()); internal.remove(other);
+        }
+    }
     @Test void otherUserCannotReadOrMutate() {
         UUID id=store.create(conversation); login("intruder");
         assertThatThrownBy(()->store.load(id)).isInstanceOf(SecurityException.class);

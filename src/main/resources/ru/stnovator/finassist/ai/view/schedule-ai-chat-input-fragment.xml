@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fragment xmlns="http://jmix.io/schema/flowui/fragment">
+    <content>
+        <vbox id="composerRoot" width="100%" padding="false" spacing="false" classNames="ai-chat-input">
+            <vbox id="pendingAttachment" width="100%" padding="false" visible="false"/>
+            <hbox id="inputBar" width="100%" spacing="true" alignItems="END" expand="messageField" classNames="ai-chat-input-bar">
+                <textArea id="messageField" trimEnabled="false" minRows="1" maxRows="6" width="100%" valueChangeMode="EAGER"
+                          placeholder="msg://io.jmix.aitoolsflowui.view.input/aiChatInput.placeholder" classNames="ai-chat-input-textarea"/>
+                <button id="sendButton" icon="PAPERPLANE" themeNames="primary icon" ariaLabel="msg://io.jmix.aitoolsflowui.view.input/aiChatInput.send"/>
+            </hbox>
+            <upload id="attachmentUpload" acceptedFileTypes=".xls,.xlsx,.csv" dropAllowed="false" uploadHandlerType="FILE_TEMPORARY_STORAGE"
+                    maxFileSize="26214400" maxFiles="1"/>
+        </vbox>
+    </content>
+</fragment>

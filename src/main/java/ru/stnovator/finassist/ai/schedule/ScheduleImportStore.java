@@ -46,6 +46,15 @@ public class ScheduleImportStore {
         }
         return draft(entity);
     }
+    /** Owned durable receipts, independent of chat history and UI session state. */
+    @Transactional(readOnly = true)
+    public List<Draft> savedForConversation(UUID conversationId) {
+        ownership.conversation(conversationId);
+        return data.load(AiScheduleImport.class)
+                .query("select e from AiScheduleImport e where e.originalConversationId=:conversation and e.owner=:owner and e.status=:status order by e.terminalAt desc, e.id")
+                .parameter("conversation", conversationId).parameter("owner", ownership.username())
+                .parameter("status", Status.SAVED.name()).list().stream().map(this::draft).toList();
+    }
     @Transactional
     public Draft update(UUID operationId, long expectedRevision, DraftContent content) {
         Objects.requireNonNull(content,"content");
