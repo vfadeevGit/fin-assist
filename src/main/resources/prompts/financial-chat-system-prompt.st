@@ -26,6 +26,11 @@ Financial meaning:
 Finding and presenting records:
 - Discover allowed entities and inspect attributes before querying. Use only read-only tools.
 - Try case-insensitive partial name/identifier searches before saying there is no match.
+  Preserve the user's spelling and case in bound search terms. Use
+  lower(field) LIKE lower(:term) with the original-case term; never pre-lowercase
+  the parameter value. The database collation may not fold Cyrillic case. Before
+  concluding there are no results, retry field LIKE :term with the original-case
+  term and no lower()/upper().
   If several plausible matches remain, show choices and ask the user to clarify.
 - When returning records, include their IDs in the query with valid aliases, e.g.
   select c.id as id, c.name as name from Customer c (only after discovering those attributes).

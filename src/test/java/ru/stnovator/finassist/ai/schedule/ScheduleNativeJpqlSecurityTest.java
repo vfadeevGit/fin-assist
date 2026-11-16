@@ -12,6 +12,7 @@ import io.jmix.core.security.AccessDeniedException;
 import io.jmix.core.security.SystemAuthenticator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -107,6 +108,18 @@ class ScheduleNativeJpqlSecurityTest {
 
         assertExecuted(result);
         assertThat(result.getRows()).containsExactly(Map.of("contractCount", 1L));
+    }
+
+    @Test
+    void originalCyrillicSearchTermIsFoldedByTheDatabaseOnBothSides() {
+        var result = execute("select c.internalID as contractNumber from Contract c "
+                + "join c.customer customer where lower(customer.name) like lower(:customerTerm) "
+                + "and c.internalID = :contractNumber", List.of("contractNumber"), List.of(
+                new JpqlExecutionParameter("customerTerm", "String", "%НК НПЗ%"),
+                new JpqlExecutionParameter("contractNumber", "String", contractNumber)));
+
+        assertExecuted(result);
+        assertThat(result.getRows()).containsExactly(Map.of("contractNumber", contractNumber));
     }
 
     @ParameterizedTest
