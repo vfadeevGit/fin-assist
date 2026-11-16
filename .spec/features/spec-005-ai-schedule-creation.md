@@ -1,6 +1,6 @@
 # Spec 005 — Создание графиков через AI Tools
 
-Статус: реализовано; все 11 задач и итоговая ветка прошли независимые ревью. Финальный clean test: 384 tests, 40 suites, 0 failures/errors/skips. Critical/Important замечаний не осталось; одно неблокирующее замечание по материализации JPQL отложено (раздел 14).
+Статус: реализовано; все 11 задач и итоговая ветка прошли независимые ревью. Последний clean test после исправления JPQL-регрессии: 395 tests, 41 suites, 0 failures/errors/skips (раздел 15). Critical/Important замечаний итогового ревью не осталось; одно неблокирующее замечание по материализации JPQL отложено (раздел 14).
 Дата: 2026-11-15.
 Ветка: `feature/ai-schedule-creation`.
 Проверенная база кода: `a50a276`.
@@ -270,3 +270,13 @@ export OPENAI_BASE_URL=http://127.0.0.1:1
 База должна существовать и разрешать локальное подключение указанного test user; migrations применяются тестовым context. Script `.superpowers/sdd/2026-11-15-ai-schedule-creation/test-env.sh` — временный эквивалент этих exports, удаляется при завершении SDD и не является обязательной зависимостью инструкции.
 
 - [x] Scoped повторное ревью финального исправления принято; Critical/Important замечаний нет.
+
+## 15. Регрессия обычных AI-JPQL запросов — 2026-11-16
+
+Обычный запрос «Покажи мне все контракты по НК НПЗ» завершался ошибкой доступа к данным. Причина — `AiScheduleImportConstraints.rejectTechnicalProbes()` вызывал `getQueryString()` у отсутствующего result query: native `JpqlAccessSupport.ConditionCollectingContext` в Jmix 3.1.0 намеренно создаётся с `null` query и собирает row-level conditions для связанных сущностей. JOIN `Contract` → `Customer` попадал в этот допустимый framework-путь и получал NPE.
+
+Guard теперь пропускает проверку текста только у business condition collector без query. Для technical collector (`AiScheduleImport`, `AiScheduleAttachment`) такой путь явно запрещён через `AccessDeniedException`. Проверки реального JPQL, владения, mixed roots/joins/subqueries, scalar reads и запреты записи сохранены; resource roles и настройки рабочего datasource не изменялись.
+
+Новый `ScheduleNativeJpqlSecurityTest` вызывает настоящий `JpqlExecutorTool` → `JpqlExecutionService` с aliased `resultProperties`, реальным пустым `ToolContext` и собственными fixtures. Четыре случая проверяют точные строки и COUNT контрактов по customer «НК НПЗ» с inner/left joins; семь случаев требуют отказа для technical roots, joins и EXISTS subqueries даже с `ROLE_system-full-access`. Mock `JpqlAccessSupport` и live LLM не используются.
+
+RED воспроизвёл исходный NPE как `executionError` обычных запросов; повтор с реальным `ToolContext` подтвердил ту же причину. Финальный targeted GREEN: **31 tests, 3 suites, 0 failures/errors/skips**, включая прежние Store/Attachment ownership regressions. Единственный полный `./gradlew --no-daemon clean test` на окончательном Java-коде: **BUILD SUCCESSFUL; 395 tests, 41 suites, 0 failures/errors/skips**. SHA-256 guard/test совпали до и после полного прогона. Прогоны использовали только disposable PostgreSQL `127.0.0.1:55439/finassist_jpql_test` с dummy AI credentials; после targeted и full проверены нулевые остатки собственных synthetic contracts/customers. Исторические результаты раздела 14 сохранены.

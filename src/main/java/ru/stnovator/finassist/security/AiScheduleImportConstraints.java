@@ -30,7 +30,14 @@ public class AiScheduleImportConstraints {
         this.registry=registry;this.ownership=ownership;this.queries=queries;
     }
     private void rejectTechnicalProbes(ReadEntityQueryContext context) {
-        String jpql=context.getResultQuery().getQueryString();
+        var query=context.getResultQuery();
+        if(query==null) {
+            // Native AI JPQL collects non-root conditions without an executable query.
+            // Technical entities remain unavailable to this generic query path.
+            if(technical(context.getEntityClass()))throw new AccessDeniedException("entity","schedule-import","read");
+            return;
+        }
+        String jpql=query.getQueryString();
         var parser=queries.parser(jpql);
         boolean referencesTechnical=parser.getAllEntityNames().stream().anyMatch(name->name.equals("AiScheduleImport") || name.equals("AiScheduleAttachment"));
         if(!referencesTechnical)return;
