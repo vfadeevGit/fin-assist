@@ -58,6 +58,8 @@ class ScheduleImportUiTest {
     AiChatMessageService chatMessages;
     @Autowired
     TemporaryStorage temporaryStorage;
+    @Autowired
+    io.jmix.aitoolsflowui.view.chat.support.TimelineItemFactory timelineFactory;
     @MockitoBean
     ScheduleAttachmentService attachments;
     @MockitoBean
@@ -96,7 +98,7 @@ class ScheduleImportUiTest {
     }
 
     ScheduleImportTool.State state(String next) {
-        return new ScheduleImportTool.State(operation, 7, Status.PREVIEW_READY, Kind.PAYMENT, null, null, null, 150, preview.total(), null, null, Set.of(Mode.ADDENDUM), Mode.ADDENDUM, "A-1", preview.effectiveDate(), next);
+        return new ScheduleImportTool.State(operation, 7, Status.PREVIEW_READY, Kind.PAYMENT, null, null, null, 150, preview.total(), null, null, Set.of(Mode.ADDENDUM), Mode.ADDENDUM, "A-1", preview.effectiveDate(), next, null);
     }
 
     @Test
@@ -282,6 +284,43 @@ class ScheduleImportUiTest {
                 conversations.remove(chat);
             }
         });
+    }
+
+    @Test
+    void submittedFileRendersWithActualUserAfterSendCompletionAndReload() {
+        auth.runWithUser("admin", () -> {
+            var chat=conversations.create();
+            try {
+                navigators.view(UiTestUtils.getCurrentView(),AiChatView.class)
+                        .withRouteParameters(new com.vaadin.flow.router.RouteParameters("id",chat.getId().toString())).navigate();
+                var fragment=(ScheduleAiChatFragment)UiTestUtils.getComponent(UiTestUtils.getCurrentView(),"chatFragment");
+                var input=(ScheduleAiChatInputFragment)FragmentUtils.getComponent(fragment,"composerFragment");
+                upload(input);var pending=input.getPendingAttachment();
+                doAnswer(invocation->{
+                    UUID actual=invocation.getArgument(1);
+                    when(attachments.forMessage(chat.getId(),actual)).thenReturn(List.of(new ScheduleAttachmentService.SubmittedAttachment(pending.id(),pending.fileName(),pending.sizeBytes())));
+                    return null;
+                }).when(attachments).bindToMessage(eq(pending.id()),any());
+                fragment.sendMessage("Prepare payment schedule");
+                var actual=chatMessages.loadMessages(chat).iterator().next();
+                assertThat(actual.getContent()).isEqualTo("Prepare payment schedule");
+                assertThat(input.getPendingAttachment()).isNull();
+                assertSentBadge(fragment,actual,pending.fileName());
+                org.springframework.test.util.ReflectionTestUtils.invokeMethod(fragment,"handleAssistantResponseDone",(Object)null);
+                assertSentBadge(fragment,chatMessages.loadMessages(chat).iterator().next(),pending.fileName());
+                fragment.setConversation(chat);
+                assertSentBadge(fragment,chatMessages.loadMessages(chat).iterator().next(),pending.fileName());
+            } finally {conversations.remove(chat);}
+        });
+    }
+    void assertSentBadge(ScheduleAiChatFragment fragment,io.jmix.aitoolsflowui.model.AiChatMessage message,String name) {
+        var renderer=fragments.create(fragment,io.jmix.aitoolsflowui.view.chat.renderer.TimelineItemRenderer.class);
+        renderer.setItem(timelineFactory.createUserItem(message));
+        assertThat(renderer.getContent().getElement().getTextRecursively()).contains(name);
+        assertThat(renderer.getContent().getChildren().filter(c->c.getElement().hasAttribute("data-source-message-id")))
+                .singleElement().satisfies(c->assertThat(c.getElement().getAttribute("data-source-message-id")).isEqualTo(message.getId().toString()));
+        renderer.setItem(timelineFactory.createAssistantItem(message));
+        assertThat(renderer.getContent().getElement().getTextRecursively()).doesNotContain(name);
     }
 
     @Test

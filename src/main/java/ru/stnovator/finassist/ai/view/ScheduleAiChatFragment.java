@@ -100,6 +100,10 @@ public class ScheduleAiChatFragment extends AiChatFragment {
             if (!retryAttachmentBound && retryAttachment != null) {
                 attachments.bindToMessage(retryAttachment.id(), actualUserMessage.getId());
                 retryAttachmentBound = true;
+                timelineItemsDc.getItems().stream()
+                        .filter(item -> item.getType() == io.jmix.aitoolsflowui.view.chat.timeline.TimelineItemType.USER
+                                && item.getMessage() != null && actualUserMessage.getId().equals(item.getMessage().getId()))
+                        .findFirst().ifPresent(this::refreshTimelineItem);
             }
             super.processUserMessage(actualUserMessage);
         }

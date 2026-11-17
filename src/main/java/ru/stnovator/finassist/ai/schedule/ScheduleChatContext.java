@@ -31,6 +31,15 @@ public class ScheduleChatContext {
         if(!substitution.getEffectiveUser().getUsername().equals(conversation.getUsername()))throw new SecurityException("Chat submission is unavailable");
         return new Submission(conversation.getId(),userId);
     }
+    /** Same persisted USER ordering as the native request's bounded history. */
+    public boolean sourceVisible(UUID sourceMessageId,Submission submission) {
+        if(sourceMessageId==null)return true;
+        ownership.userMessage(sourceMessageId,submission.conversationId());
+        ownership.userMessage(submission.userMessageId(),submission.conversationId());
+        var source=message(sourceMessageId);var current=message(submission.userMessageId());
+        int order=source.getCreatedDate().compareTo(current.getCreatedDate());
+        return order<0 || order==0 && source.getId().toString().compareTo(current.getId().toString())<=0;
+    }
     private AiChatMessageEntity message(UUID id) {
         return data.load(AiChatMessageEntity.class).id(id).fetchPlan(fp->fp.addFetchPlan(FetchPlan.BASE).add("conversation",FetchPlan.BASE))
                 .optional().orElseThrow(()->new SecurityException("Chat submission is unavailable"));

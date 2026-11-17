@@ -22,6 +22,12 @@ public class AiScheduleUiConfiguration {
     }
 
     @Bean
+    ComponentRegistration scheduleTimelineItemRenderer() {
+        return ComponentRegistrationBuilder.create(ScheduleTimelineItemRenderer.class)
+                .replaceComponent(io.jmix.aitoolsflowui.view.chat.renderer.TimelineItemRenderer.class).build();
+    }
+
+    @Bean
     ComponentRegistration scheduleChatHubFragment() {
         return ComponentRegistrationBuilder.create(ScheduleAiChatHubFragment.class).replaceComponent(AiChatHubFragment.class).build();
     }

@@ -13,7 +13,9 @@ import java.util.*;
 
 @Service
 public class ScheduleAttachmentService {
-    public record SubmittedAttachment(UUID id,String fileName,long sizeBytes) {}
+    public record SubmittedAttachment(UUID id,String fileName,long sizeBytes,boolean available) {
+        public SubmittedAttachment(UUID id,String fileName,long sizeBytes) {this(id,fileName,sizeBytes,true);}
+    }
     private final UnconstrainedDataManager data;
     private final ScheduleImportOwnership ownership;
     private final ScheduleImportProperties properties;
@@ -59,7 +61,7 @@ public class ScheduleAttachmentService {
         if(attachment.getFileDeletedAt()!=null || attachment.getRemovalRequestedAt()!=null)
             throw new IllegalStateException("File is unavailable");
         var others=forMessage(attachment.getOriginalConversationId(),userMessageId);
-        if(others.stream().anyMatch(e->!e.id().equals(attachmentId)))
+        if(others.stream().anyMatch(e->e.available() && !e.id().equals(attachmentId)))
             throw new IllegalStateException("Only one attachment per submission is supported");
         attachment.setSourceMessageId(userMessageId);data.saveWithoutReload(attachment);
     }
@@ -67,9 +69,22 @@ public class ScheduleAttachmentService {
     public List<SubmittedAttachment> forMessage(UUID conversationId,UUID userMessageId) {
         ownership.userMessage(userMessageId,conversationId);
         return data.load(AiScheduleAttachment.class)
-                .query("select e from AiScheduleAttachment e where e.originalConversationId=:conversation and e.sourceMessageId=:message and e.fileDeletedAt is null and e.removalRequestedAt is null")
-                .parameter("conversation",conversationId).parameter("message",userMessageId).list().stream()
-                .map(e->new SubmittedAttachment(e.getId(),e.getFileName(),e.getSizeBytes())).toList();
+                .query("select e from AiScheduleAttachment e where e.originalConversationId=:conversation and e.sourceMessageId=:message and e.owner=:owner")
+                .parameter("conversation",conversationId).parameter("message",userMessageId).parameter("owner",ownership.username()).list().stream()
+                .map(this::metadata).toList();
+    }
+    /** Metadata only: unavailable files retain a truthful sent-file receipt without exposing FileRef. */
+    @Transactional
+    public SubmittedAttachment boundMetadata(UUID attachmentId,UUID conversationId,UUID userMessageId) {
+        var attachment=owned(attachmentId);
+        ownership.userMessage(userMessageId,conversationId);
+        if(!conversationId.equals(attachment.getOriginalConversationId()) || !userMessageId.equals(attachment.getSourceMessageId()))
+            throw new SecurityException("Attachment is unavailable for this submission");
+        return metadata(attachment);
+    }
+    private SubmittedAttachment metadata(AiScheduleAttachment attachment) {
+        return new SubmittedAttachment(attachment.getId(),attachment.getFileName(),attachment.getSizeBytes(),
+                attachment.getFileDeletedAt()==null && attachment.getRemovalRequestedAt()==null);
     }
     @Transactional
     public String boundFileName(UUID attachmentId,UUID conversationId,UUID userMessageId) {
