@@ -6,6 +6,7 @@ import io.jmix.core.UnconstrainedDataManager;
 import io.jmix.core.security.AccessDeniedException;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Propagation;
@@ -99,12 +100,16 @@ public class ScheduleImportTool implements JmixAiTool {
         }catch(TableReadException e){return issues(draft,e.issues());}catch(IOException e){throw new UncheckedIOException(e);}
     }
     @Tool(description="Set date/amount pairs explicitly supplied in the current user message, for a plain-text operation only. Ambiguous type/date/amount requires asking the user. Server records actual message provenance.")
-    public Result setScheduleRows(UUID operationId,long revision,List<InputRow> rows,ParseOptions options,ToolContext context) {
+    public Result setScheduleRows(UUID operationId,long revision,List<InputRow> rows,
+                                  @ToolParam(required=false,description="Omit/null or all-null/empty fields for ISO dates and ungrouped decimal-dot amounts; explicit text formats use MM for month, not mm") ScheduleMappingRequest.Formats options,ToolContext context) {
         var draft=current(operationId,revision,context);var c=draft.content();var submission=contexts.resolve(context);
         if(c.source()!=null)throw new IllegalStateException("Read the attachment with applyScheduleMapping");
         if(rows==null)throw new IllegalArgumentException("Rows are required");
         var sourced=rows.stream().map(r->new InputRow(r.dateText(),r.amountText(),"message:"+submission.userMessageId())).toList();
-        var normalized=new ScheduleNormalizer().normalize(sourced,options);
+        ParseOptions parsedOptions;
+        try {parsedOptions=ScheduleMappingRequest.parseOptions(options);}
+        catch(TableReadException e) {return issues(draft,e.issues());}
+        var normalized=new ScheduleNormalizer().normalize(sourced,parsedOptions);
         if(!normalized.issues().isEmpty())return issues(draft,normalized.issues());
         if(normalized.rows().isEmpty())return issues(draft,List.of(new Issue("message","NO_DATA_ROWS")));
         return result(store.update(operationId,revision,new DraftContent(c.kind(),null,submission.userMessageId(),null,normalized.rows(),c.contractId(),c.projectId(),null,null,null,null)));

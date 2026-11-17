@@ -26,7 +26,7 @@ public record ScheduleMappingRequest(
         @ToolParam(required = false, description = "CSV options only; omit for Excel and automatic UTF-8 CSV detection") Csv csvOptions) {
 
     public record Formats(
-            @ToolParam(required = false, description = "Explicit Java date pattern for text dates, e.g. dd.MM.uuuu; MM is month, mm is minute and unsupported. Omit/null for automatic Excel parsing") String datePattern,
+            @ToolParam(required = false, description = "Explicit Java date pattern for text dates, e.g. dd.MM.uuuu; MM is month, mm is minute and unsupported. Omit/null with the other fields for default ISO text or automatic Excel parsing") String datePattern,
             @ToolParam(required = false, description = "Explicit single-character decimal separator: . or ,; required with an explicit date pattern") String decimalSeparator,
             @ToolParam(required = false, description = "Single-character digit grouping separator, or null/empty for no grouping") String groupingSeparator) {}
 
@@ -43,7 +43,7 @@ public record ScheduleMappingRequest(
         Set<Integer> excluded = excludedRows == null ? Set.of() : excludedRows.stream()
                 .map(row -> index(row, "INVALID_EXCLUDED_ROW")).collect(java.util.stream.Collectors.toUnmodifiableSet());
         // The bounded reader remains authoritative for upper limits, actual sheet/cell bounds and all exclusions.
-        return new Mapping(sheetKey, date, amount, first, excluded, parseOptions(), csv());
+        return new Mapping(sheetKey, date, amount, first, excluded, parseOptions(formats), csv());
     }
 
     private static int index(BigDecimal value, String code) {
@@ -56,7 +56,7 @@ public record ScheduleMappingRequest(
         }
     }
 
-    private ParseOptions parseOptions() {
+    static ParseOptions parseOptions(Formats formats) {
         if (formats == null || empty(formats.datePattern()) && empty(formats.decimalSeparator())
                 && empty(formats.groupingSeparator())) return null;
         String date = formats.datePattern();

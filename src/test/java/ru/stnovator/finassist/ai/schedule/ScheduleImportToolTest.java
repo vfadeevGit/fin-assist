@@ -243,5 +243,55 @@ class ScheduleImportToolTest {
             UUID file=attachments.stage(conversation,"plan.xls",new ByteArrayInputStream(out.toByteArray()));attachments.bindToMessage(file,message);
         }
     }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={
+            "{\"datePattern\":null,\"decimalSeparator\":null,\"groupingSeparator\":null}",
+            "null", "{}", "{\"datePattern\":\"\",\"decimalSeparator\":\"\",\"groupingSeparator\":\"\"}",
+            "{\"datePattern\":\"uuuu-MM-dd\",\"decimalSeparator\":\".\",\"groupingSeparator\":\"\\u0000\"}"
+    })
+    void textCallbackAcceptsNullableFormatsAndKeepsActualMessageProvenance(String options) {
+        var before=counts();var start=tool.startScheduleImport(Kind.PAYMENT,context());
+        var result=rowsCallback(start,"2026-06-01","120",options);
+        assertThat(result.path("issues").size()).isZero();
+        assertThat(result.path("state").path("rowCount").asInt()).isEqualTo(1);
+        assertThat(result.path("state").path("total").decimalValue()).isEqualByComparingTo("120.00");
+        assertThat(store.load(start.state().operationId()).content().sourceMessageId()).isEqualTo(message);
+        assertThat(counts()).isEqualTo(before);
+    }
+    @Test void textCallbackAcceptsExplicitLegacySeparators() {
+        var user=data.load(AiChatMessageEntity.class).id(message).one();user.setContent("01.06.2026 1 200,00");data.saveWithoutReload(user);
+        var start=tool.startScheduleImport(Kind.PAYMENT,context());
+        var result=rowsCallback(start,"01.06.2026","1 200,00","{\"datePattern\":\"dd.MM.uuuu\",\"decimalSeparator\":\",\",\"groupingSeparator\":\" \"}");
+        assertThat(result.path("issues").size()).isZero();
+        assertThat(result.path("state").path("total").decimalValue()).isEqualByComparingTo("1200.00");
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={
+            "{\"datePattern\":\"uuuu-MM-dd\",\"decimalSeparator\":\"..\",\"groupingSeparator\":null}",
+            "{\"datePattern\":\"dd.mm.uuuu\",\"decimalSeparator\":\".\",\"groupingSeparator\":null}"
+    })
+    void textCallbackInvalidFormatsReturnIssuesWithoutAdvancing(String options) {
+        var before=counts();var start=tool.startScheduleImport(Kind.PAYMENT,context());
+        assertThat(rowsCallback(start,"2026-06-01","120",options).path("issues").toString()).contains("INVALID_PARSE_OPTIONS");
+        assertThat(store.load(start.state().operationId()).revision()).isEqualTo(start.state().revision());
+        assertThat(counts()).isEqualTo(before);
+    }
+    @Test void textCallbackCannotReplaceFileBoundRows() {
+        UUID file=stage("date;amount\n2026-06-01;120");attachments.bindToMessage(file,message);
+        var start=tool.startScheduleImport(Kind.PAYMENT,context());
+        assertThatThrownBy(()->rowsCallback(start,"2026-06-01","120","null"))
+                .isInstanceOf(org.springframework.ai.tool.execution.ToolExecutionException.class).hasMessageContaining("Read the attachment");
+        var draft=store.load(start.state().operationId());
+        assertThat(draft.revision()).isEqualTo(start.state().revision());assertThat(draft.content().source()).isEqualTo(file);
+    }
+    tools.jackson.databind.JsonNode rowsCallback(ScheduleImportTool.Result start,String date,String amount,String options) {
+        var callback=Arrays.stream(org.springframework.ai.support.ToolCallbacks.from(tool))
+                .filter(c->c.getToolDefinition().name().equals("setScheduleRows")).findFirst().orElseThrow();
+        assertThat(callback).isInstanceOf(org.springframework.ai.tool.method.MethodToolCallback.class);
+        var json=tools.jackson.databind.json.JsonMapper.builder().build();
+        String arguments="{\"operationId\":\""+start.state().operationId()+"\",\"revision\":"+start.state().revision()
+                +",\"rows\":"+json.writeValueAsString(List.of(Map.of("dateText",date,"amountText",amount,"source","forged-model-source")))+",\"options\":"+options+"}";
+        return json.readTree(callback.call(arguments,context()));
+    }
     List<Long> counts(){return java.util.stream.Stream.of("PaymentScheduleItem","ShipmentScheduleItem","Addendum","PaymentScheduleCorrection","PaymentScheduleCorrectionItem","ShipmentScheduleCorrection","ShipmentScheduleCorrectionItem").map(e->data.loadValue("select count(e) from "+e+" e",Long.class).one()).toList();}
 }
