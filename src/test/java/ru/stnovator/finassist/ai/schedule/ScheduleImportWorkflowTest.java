@@ -48,6 +48,17 @@ class ScheduleImportWorkflowTest {
     ScheduleImportPreview preview(ScheduleImportStore.Draft draft, Mode mode) {
         return workflow.preview(draft.operationId(), draft.revision(), mode, "new", date.plusYears(1));
     }
+    @Test void contractSearchNormalizesBothSidesInDatabaseAndPreservesLiteralSubstring() {
+        var contract=data.load(Contract.class).id(fixture.contract.getId()).one();
+        contract.setInternalID("КАПСТРОЙ-ABC_%_"+UUID.randomUUID().toString().substring(0,8));data.saveWithoutReload(contract);
+        var draft=workflow.start(conversation,Kind.PAYMENT);
+        assertThat(workflow.findContracts(draft.operationId(),"  КАПСТРОЙ  "))
+                .extracting(ScheduleImportWorkflow.Choice::id).containsExactly(contract.getId());
+        assertThat(workflow.findContracts(draft.operationId(),"abc_%"))
+                .extracting(ScheduleImportWorkflow.Choice::id).containsExactly(contract.getId());
+        assertThat(workflow.findContracts(draft.operationId(),"ABC%"))
+                .extracting(ScheduleImportWorkflow.Choice::id).doesNotContain(contract.getId());
+    }
     @Test void selectsOnlyProjectAndAsksForSeveral() {
         var only = prepared();
         assertThat(only.content().projectId()).isEqualTo(fixture.project.getId());

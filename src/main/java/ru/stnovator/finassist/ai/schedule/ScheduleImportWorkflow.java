@@ -69,9 +69,10 @@ public class ScheduleImportWorkflow {
     public List<Choice> findContracts(UUID operationId, String query) {
         current(operationId, null);
         requireRead(Contract.class, "internalID");
-        String search = query == null ? "" : query.strip().toLowerCase(Locale.ROOT);
+        String search = query == null ? "" : query.strip();
+        // Normalize both operands in the database: Java and database case folding can differ.
         // Bound parameters keep prompt text out of JPQL; substring matching has no wildcard semantics.
-        return data.load(Contract.class).query("select e from Contract e where locate(:search, lower(e.internalID)) > 0 order by e.internalID, e.id")
+        return data.load(Contract.class).query("select e from Contract e where locate(lower(:search), lower(e.internalID)) > 0 order by e.internalID, e.id")
                 .parameter("search", search).fetchPlan(FetchPlan.LOCAL).maxResults(100).joinTransaction(true).list().stream()
                 .map(c -> new Choice(c.getId(), c.getInternalID())).toList();
     }
