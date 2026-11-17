@@ -92,7 +92,8 @@ public class ScheduleTableReader {
             Value date = value(row, mapping.dateColumn());
             Value amount = value(row, mapping.amountColumn());
             if (index < mapping.firstDataRow() || mapping.excludedRows().contains(index)) {
-                if (!confirmedHeaderOrTotal(grid.rows(), index, mapping) || row.stream().anyMatch(Value::invalid)) {
+                if (!confirmedHeaderOrTotal(grid.rows(), index, mapping)
+                        || invalidExcludedCells(row, index, mapping)) {
                     issues.add(new Issue(source, "INVALID_EXCLUDED_ROW"));
                 }
                 continue;
@@ -149,8 +150,12 @@ public class ScheduleTableReader {
                     || (options.decimalSeparator() != '.' && options.decimalSeparator() != ',')
                     || options.groupingSeparator() == options.decimalSeparator()
                     || Character.isDigit(options.groupingSeparator())) throw failure("file", "INVALID_PARSE_OPTIONS");
-            try { DateTimeFormatter.ofPattern(options.datePattern()); }
-            catch (IllegalArgumentException ex) { throw failure("file", "INVALID_PARSE_OPTIONS"); }
+            try {
+                // A syntactically valid pattern can still require unsupported time fields (e.g. mm).
+                LocalDate.of(2000, 1, 1).format(DateTimeFormatter.ofPattern(options.datePattern(), Locale.ROOT));
+            } catch (DateTimeException | IllegalArgumentException ex) {
+                throw failure("file", "INVALID_PARSE_OPTIONS");
+            }
         }
         if (mapping.sheetKey() == null || mapping.dateColumn() < 0 || mapping.amountColumn() < 0
                 || mapping.dateColumn() == mapping.amountColumn() || mapping.firstDataRow() < 0
@@ -338,6 +343,19 @@ public class ScheduleTableReader {
         if (number.scale() > 2) throw failure(source, "AMOUNT_SCALE");
         String text = number.toPlainString();
         return formats == null ? text : text.replace('.', formats.decimalSeparator());
+    }
+
+    private boolean invalidExcludedCells(List<Value> row, int index, Mapping mapping) {
+        Value date = value(row, mapping.dateColumn());
+        boolean explicitTotal = mapping.excludedRows().contains(index) && date.type().equals("STRING")
+                && Set.of("total", "subtotal", "итого", "всего").contains(date.raw().strip().toLowerCase(Locale.ROOT));
+        for (int column = 0; column < row.size(); column++) {
+            Value cell = row.get(column);
+            // An explicitly excluded total's formula is neither evaluated nor used as payment data.
+            if (explicitTotal && column == mapping.amountColumn() && cell.type().equals("FORMULA_UNRELIABLE")) continue;
+            if (cell.invalid()) return true;
+        }
+        return false;
     }
 
     private boolean confirmedHeaderOrTotal(List<List<Value>> rows, int index, Mapping mapping) {

@@ -2,6 +2,7 @@ package ru.stnovator.finassist.ai.schedule;
 
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.usermodel.FormulaError;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
 
@@ -350,6 +351,80 @@ class ScheduleTableReaderTest {
                 .satisfies(error -> assertThat(((TableReadException) error).issues())
                         .containsExactly(new Issue("csv!1", "INVALID_EXCLUDED_ROW"),
                                 new Issue("csv!3", "INVALID_EXCLUDED_ROW")));
+    }
+
+    // A confirmed total must not prevent importing the seven actual payments in an XLS.
+    @Test
+    void explicitlyExcludedXlsFormulaTotalDoesNotEnterNormalizedSchedule() throws Exception {
+        try (var book = new HSSFWorkbook()) {
+            var sheet = book.createSheet("График оплат");
+            var header = sheet.createRow(0);
+            header.createCell(0).setCellValue("Дата оплаты");
+            header.createCell(1).setCellValue("Сумма, руб.");
+            var dates = List.of("2027-02-15", "2026-12-01", "2027-01-15", "2026-12-01",
+                    "2027-03-15", "2027-01-15", "2026-12-15");
+            double[] amounts = {200000, 100000, 150000.25, 50000, 175000, -25000.25, 100000};
+            for (int index = 0; index < dates.size(); index++) {
+                var row = sheet.createRow(index + 1);
+                row.createCell(0).setCellValue(LocalDate.parse(dates.get(index)));
+                row.createCell(1).setCellValue(amounts[index]);
+            }
+            sheet.createRow(8);
+            var total = sheet.createRow(9);
+            total.createCell(0).setCellValue("ИТОГО");
+            total.createCell(1).setCellFormula("SUM(B2:B8)");
+            byte[] data = bytes(book);
+            assertIssue(() -> reader.read(stream(data), "schedule.xls",
+                    new Mapping("sheet:0", 0, 1, 1, Set.of(), null)), "FORMULA_REQUIRES_CORRECTION");
+            var rows = reader.read(stream(data), "schedule.xls",
+                    new Mapping("sheet:0", 0, 1, 1, Set.of(9), null));
+            assertThat(rows).hasSize(7);
+            var normalized = normalizer.normalize(rows, null);
+            assertThat(normalized.issues()).isEmpty();
+            assertThat(normalized.rows()).containsExactly(
+                    new Row(LocalDate.of(2026, 12, 1), new BigDecimal("150000.00")),
+                    new Row(LocalDate.of(2026, 12, 15), new BigDecimal("100000.00")),
+                    new Row(LocalDate.of(2027, 1, 15), new BigDecimal("125000.00")),
+                    new Row(LocalDate.of(2027, 2, 15), new BigDecimal("200000.00")),
+                    new Row(LocalDate.of(2027, 3, 15), new BigDecimal("175000.00")));
+            assertThat(normalized.rows().stream().map(Row::amount).reduce(BigDecimal.ZERO, BigDecimal::add))
+                    .isEqualByComparingTo("750000.00");
+        }
+    }
+
+    // A footer exception must never let the AI discard dated payments or spreadsheet errors.
+    @Test
+    void explicitExclusionsStillRejectDatedFormulasAndErrors() throws Exception {
+        try (var book = new HSSFWorkbook()) {
+            var sheet = book.createSheet();
+            var payment = sheet.createRow(0);
+            payment.createCell(0).setCellValue(LocalDate.of(2026, 12, 1));
+            payment.createCell(1).setCellFormula("1+2");
+            var valid = sheet.createRow(1);
+            valid.createCell(0).setCellValue(LocalDate.of(2026, 12, 2));
+            valid.createCell(1).setCellValue(10);
+            var excluded = new Mapping("sheet:0", 0, 1, 0, Set.of(0), null);
+            assertIssue(() -> reader.read(stream(bytes(book)), "a.xls", excluded), "INVALID_EXCLUDED_ROW");
+            payment.removeCell(payment.getCell(1));
+            payment.createCell(1).setCellErrorValue(FormulaError.DIV0);
+            assertIssue(() -> reader.read(stream(bytes(book)), "a.xls", excluded), "INVALID_EXCLUDED_ROW");
+            payment.getCell(0).setCellValue("Итого");
+            assertIssue(() -> reader.read(stream(bytes(book)), "a.xls", excluded), "INVALID_EXCLUDED_ROW");
+            payment.getCell(1).setCellFormula("1+2");
+            payment.createCell(2).setCellErrorValue(FormulaError.DIV0);
+            assertIssue(() -> reader.read(stream(bytes(book)), "a.xls", excluded), "INVALID_EXCLUDED_ROW");
+        }
+    }
+
+    @Test
+    void timeBearingDatePatternProducesStructuredParseIssue() throws Exception {
+        try (var book = new HSSFWorkbook()) {
+            var row = book.createSheet().createRow(0);
+            row.createCell(0).setCellValue(LocalDate.of(2026, 12, 1));
+            row.createCell(1).setCellValue(10);
+            assertIssue(() -> reader.read(stream(bytes(book)), "a.xls",
+                    mapping("sheet:0", new ParseOptions("dd/mm/yyyy", '.', '\0'))), "INVALID_PARSE_OPTIONS");
+        }
     }
 
     private Mapping mapping(String key, ParseOptions formats) {
