@@ -81,16 +81,21 @@ public class ScheduleImportTool implements JmixAiTool {
         }catch(TableReadException e){return issues(draft,e.issues());}catch(IOException e){throw new UncheckedIOException(e);}
     }
     @Tool(description="Read ALL attachment rows on the server using explicit zero-based worksheet/column/header mapping. Do not rewrite file rows in JSON. Returns structured issues without partial rows.")
-    public Result applyScheduleMapping(UUID operationId,long revision,Mapping mapping,ToolContext context) {
+    public Result applyScheduleMapping(UUID operationId,long revision,ScheduleMappingRequest mapping,ToolContext context) {
         var draft=current(operationId,revision,context);var c=draft.content();
         if(c.source()==null)throw new IllegalStateException("An attachment is required");
         String name=attachments.boundFileName(c.source(),draft.conversationId(),c.sourceMessageId());
+        Mapping parsedMapping;
+        try {
+            if(mapping==null)return issues(draft,List.of(new Issue("file","MAPPING_REQUIRED")));
+            parsedMapping=mapping.toMapping();
+        } catch(TableReadException e) {return issues(draft,e.issues());}
         try(var input=attachments.open(c.source())) {
-            var rows=reader.read(input,name,mapping);
+            var rows=reader.read(input,name,parsedMapping);
             // Normalize before changing provenance, so invalid input never advances the draft.
-            var normalized=new ScheduleNormalizer().normalize(rows,mapping.formats());
+            var normalized=new ScheduleNormalizer().normalize(rows,parsedMapping.formats());
             if(!normalized.issues().isEmpty())return issues(draft,normalized.issues());
-            return result(store.update(operationId,revision,new DraftContent(c.kind(),c.source(),c.sourceMessageId(),mapping,normalized.rows(),c.contractId(),c.projectId(),null,null,null,null)));
+            return result(store.update(operationId,revision,new DraftContent(c.kind(),c.source(),c.sourceMessageId(),parsedMapping,normalized.rows(),c.contractId(),c.projectId(),null,null,null,null)));
         }catch(TableReadException e){return issues(draft,e.issues());}catch(IOException e){throw new UncheckedIOException(e);}
     }
     @Tool(description="Set date/amount pairs explicitly supplied in the current user message, for a plain-text operation only. Ambiguous type/date/amount requires asking the user. Server records actual message provenance.")

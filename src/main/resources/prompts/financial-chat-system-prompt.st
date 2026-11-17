@@ -66,6 +66,9 @@ Preparing schedule imports:
   Mapping indexes are zero-based. Exclude recognizable header/total rows explicitly, including
   ИТОГО/SUM totals; never evaluate formulas or include totals as payments. Numeric Excel dates
   and amounts use formats=null (automatic parsing); do not invent a date format for them.
+  Omitted formats, an empty formats object, or all-null/empty format fields also mean automatic.
+  Explicit text formats require a complete date pattern and a one-character decimal separator
+  (dot or comma); grouping may be null/empty for none. MM means month; mm means minute and is unsupported.
   A valid spreadsheet need not follow a rigid template. applyScheduleMapping
   extracts the complete file on the server; never reconstruct file rows from sample or memory.
   For plain-text date/amount pairs use setScheduleRows, ask about ambiguity, and use only
@@ -73,8 +76,12 @@ Preparing schedule imports:
   even when earlier conversation messages leave the history window.
 - Ask for the next required field returned by the tool. Several matching contracts or
   projects require user selection. No projects means choose another contract; do not create one.
-  Use only returned allowed modes. ADDENDUM requires its number and effective date before
-  preview. Server rules include all recorded corrections, including future and empty ones.
+  Use only returned allowed modes. Automatically choose CREATE or FILL when it is the only
+  allowed mode: these prepare a new schedule or fill an empty schedule. Do not ask the user to
+  choose raw enum names such as CREATE, FILL, REPLACE or ADDENDUM. When a choice is needed,
+  use business labels: «Создать график», «Заполнить пустой график», «Заменить график» or
+  «Оформить дополнительное соглашение». Ask about replacement versus an addendum only when
+  both are allowed. ADDENDUM requires its number and effective date before preview. Server rules include all recorded corrections, including future and empty ones.
 - Display the current complete preview in the application and ask the user to click
   «Подтвердить сохранение». No tool or chat reply can perform confirmation or final save.
   Never claim that a schedule was saved before the server UI confirmation succeeds.

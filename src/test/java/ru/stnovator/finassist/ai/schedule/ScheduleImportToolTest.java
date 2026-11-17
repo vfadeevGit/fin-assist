@@ -12,6 +12,7 @@ import ru.stnovator.finassist.entity.*;
 import ru.stnovator.finassist.test_support.DashboardFixtures;
 import ru.stnovator.finassist.test_support.RelatedFixtures;
 import java.io.*;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.*;
@@ -107,7 +108,7 @@ class ScheduleImportToolTest {
         var before=counts();var result=tool.startScheduleImport(Kind.PAYMENT,context());
         var inspected=tool.inspectScheduleAttachment(result.state().operationId(),result.state().revision(),context());
         assertThat(inspected.inspection().sheets()).hasSize(1);assertThat(inspected.state().nextRequired()).isEqualTo("MAPPING");
-        var mapping=new ScheduleTableTypes.Mapping("csv",0,1,1,Set.of(),null);
+        var mapping=new ScheduleMappingRequest("csv",BigDecimal.ZERO,BigDecimal.ONE,BigDecimal.ONE,List.of(),null,null);
         var rejected=tool.applyScheduleMapping(result.state().operationId(),result.state().revision(),mapping,context());
         assertThat(rejected.issues()).isNotEmpty();assertThat(counts()).isEqualTo(before);
     }
@@ -115,7 +116,7 @@ class ScheduleImportToolTest {
         UUID file=stage("date;amount\n2026-06-01;100\n2026-06-01;20");attachments.bindToMessage(file,message);
         var result=tool.startScheduleImport(Kind.PAYMENT,context());
         var inspection=tool.inspectScheduleAttachment(result.state().operationId(),result.state().revision(),context());
-        var mapping=new ScheduleTableTypes.Mapping(inspection.inspection().sheets().getFirst().key(),0,1,1,Set.of(),null);
+        var mapping=new ScheduleMappingRequest(inspection.inspection().sheets().getFirst().key(),BigDecimal.ZERO,BigDecimal.ONE,BigDecimal.ONE,List.of(),null,null);
         result=tool.applyScheduleMapping(result.state().operationId(),result.state().revision(),mapping,context());
         assertThat(result.state().rowCount()).isEqualTo(1);assertThat(result.state().total()).isEqualByComparingTo("120");
         assertThat(result.state().nextRequired()).isEqualTo("CONTRACT");
@@ -172,6 +173,75 @@ class ScheduleImportToolTest {
         var mapping=new ScheduleTableTypes.Mapping("csv",0,1,1,Set.of(),new ParseOptions(null,'.','\0'));
         assertThatThrownBy(()->reader.read(new ByteArrayInputStream("date;amount\n2026-06-01;120".getBytes(StandardCharsets.UTF_8)),"plan.csv",mapping))
                 .isInstanceOfSatisfying(ScheduleTableTypes.TableReadException.class,e->assertThat(e.issues()).contains(new Issue("file","INVALID_PARSE_OPTIONS")));
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={
+            ",\"formats\":{\"datePattern\":null,\"decimalSeparator\":null,\"groupingSeparator\":null}",
+            "", ",\"formats\":null", ",\"formats\":{}",
+            ",\"formats\":{\"datePattern\":\"\",\"decimalSeparator\":\"\",\"groupingSeparator\":\"\"}",
+            ",\"formats\":{\"datePattern\":\"dd.MM.uuuu\",\"decimalSeparator\":\".\",\"groupingSeparator\":\"\"}"
+    })
+    void actualMappingCallbackAcceptsAutomaticAndExplicitFormats(String formats) throws Exception {
+        stageNumericXls();var before=counts();var start=tool.startScheduleImport(Kind.PAYMENT,context());
+        var result=mappingCallback(start,"{\"sheetKey\":\"sheet:0\",\"dateColumn\":0,\"amountColumn\":1,\"firstDataRow\":1,\"excludedRows\":[9]"+formats+"}");
+        assertThat(result.path("issues").size()).isZero();
+        assertThat(result.path("state").path("rowCount").asInt()).isEqualTo(5);
+        assertThat(result.path("state").path("total").decimalValue()).isEqualByComparingTo("750000.00");
+        assertThat(counts()).isEqualTo(before);
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={
+            "{\"datePattern\":\"dd.MM.uuuu\",\"decimalSeparator\":\"..\",\"groupingSeparator\":null}",
+            "{\"datePattern\":\"dd.mm.uuuu\",\"decimalSeparator\":\".\",\"groupingSeparator\":null}",
+            "{\"datePattern\":null,\"decimalSeparator\":\",\",\"groupingSeparator\":null}",
+            "{\"datePattern\":\"dd.MM.uuuu\",\"decimalSeparator\":\".\",\"groupingSeparator\":\"--\"}"
+    })
+    void actualMappingCallbackReturnsStructuredFormatIssueWithoutChangingDraft(String formats) throws Exception {
+        stageNumericXls();var before=counts();var start=tool.startScheduleImport(Kind.PAYMENT,context());
+        var result=mappingCallback(start,"{\"sheetKey\":\"sheet:0\",\"dateColumn\":0,\"amountColumn\":1,\"firstDataRow\":1,\"excludedRows\":[9],\"formats\":"+formats+"}");
+        assertThat(result.path("issues").toString()).contains("INVALID_PARSE_OPTIONS");
+        assertThat(store.load(start.state().operationId()).revision()).isEqualTo(start.state().revision());
+        assertThat(counts()).isEqualTo(before);
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={
+            "{\"sheetKey\":\"sheet:0\",\"amountColumn\":1,\"firstDataRow\":1}",
+            "{\"sheetKey\":\"sheet:0\",\"dateColumn\":null,\"amountColumn\":1,\"firstDataRow\":1}",
+            "{\"sheetKey\":\"sheet:0\",\"dateColumn\":0,\"amountColumn\":0,\"firstDataRow\":1}",
+            "{\"sheetKey\":\"sheet:0\",\"dateColumn\":-1,\"amountColumn\":1,\"firstDataRow\":1}",
+            "{\"sheetKey\":\"sheet:0\",\"dateColumn\":100,\"amountColumn\":1,\"firstDataRow\":1}",
+            "{\"sheetKey\":\"sheet:0\",\"dateColumn\":0.5,\"amountColumn\":1,\"firstDataRow\":1,\"excludedRows\":[9]}"
+    })
+    void actualMappingCallbackNeverGuessesInvalidColumnIndices(String mapping) throws Exception {
+        stageNumericXls();var start=tool.startScheduleImport(Kind.PAYMENT,context());
+        assertThat(mappingCallback(start,mapping).path("issues").toString()).contains("INVALID_MAPPING");
+        assertThat(store.load(start.state().operationId()).revision()).isEqualTo(start.state().revision());
+    }
+    @Test void mappingCallbackSchemaKeepsIndicesRequiredAndFormatsOptional() {
+        var callback=Arrays.stream(org.springframework.ai.support.ToolCallbacks.from(tool))
+                .filter(c->c.getToolDefinition().name().equals("applyScheduleMapping")).findFirst().orElseThrow();
+        var schema=tools.jackson.databind.json.JsonMapper.builder().build().readTree(callback.getToolDefinition().inputSchema());
+        var mapping=schema.path("properties").path("mapping");
+        assertThat(mapping.path("required").toString()).contains("sheetKey","dateColumn","amountColumn","firstDataRow").doesNotContain("formats");
+        assertThat(mapping.path("properties").path("formats").path("properties").path("decimalSeparator").toString()).contains("string");
+    }
+    tools.jackson.databind.JsonNode mappingCallback(ScheduleImportTool.Result start,String mapping) {
+        var callback=Arrays.stream(org.springframework.ai.support.ToolCallbacks.from(tool))
+                .filter(c->c.getToolDefinition().name().equals("applyScheduleMapping")).findFirst().orElseThrow();
+        assertThat(callback).isInstanceOf(org.springframework.ai.tool.method.MethodToolCallback.class);
+        String arguments="{\"operationId\":\""+start.state().operationId()+"\",\"revision\":"+start.state().revision()+",\"mapping\":"+mapping+"}";
+        return tools.jackson.databind.json.JsonMapper.builder().build().readTree(callback.call(arguments,context()));
+    }
+    void stageNumericXls() throws Exception {
+        try(var book=new org.apache.poi.hssf.usermodel.HSSFWorkbook();var out=new ByteArrayOutputStream()) {
+            var sheet=book.createSheet("График оплат");var header=sheet.createRow(0);
+            header.createCell(0).setCellValue("Дата оплаты");header.createCell(1).setCellValue("Сумма, руб.");
+            var dates=List.of("2027-02-15","2026-12-01","2027-01-15","2026-12-01","2027-03-15","2027-01-15","2026-12-15");
+            double[] amounts={200000,100000,150000.25,50000,175000,-25000.25,100000};
+            for(int i=0;i<dates.size();i++){var row=sheet.createRow(i+1);row.createCell(0).setCellValue(LocalDate.parse(dates.get(i)));row.createCell(1).setCellValue(amounts[i]);}
+            sheet.createRow(8);var total=sheet.createRow(9);total.createCell(0).setCellValue("ИТОГО");total.createCell(1).setCellFormula("SUM(B2:B8)");book.write(out);
+            UUID file=attachments.stage(conversation,"plan.xls",new ByteArrayInputStream(out.toByteArray()));attachments.bindToMessage(file,message);
+        }
     }
     List<Long> counts(){return java.util.stream.Stream.of("PaymentScheduleItem","ShipmentScheduleItem","Addendum","PaymentScheduleCorrection","PaymentScheduleCorrectionItem","ShipmentScheduleCorrection","ShipmentScheduleCorrectionItem").map(e->data.loadValue("select count(e) from "+e+" e",Long.class).one()).toList();}
 }
