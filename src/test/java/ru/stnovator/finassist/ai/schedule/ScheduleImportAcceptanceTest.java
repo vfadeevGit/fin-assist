@@ -59,8 +59,8 @@ class ScheduleImportAcceptanceTest {
     private final LocalDate august = june.plusMonths(2);
     private final LocalDate paymentDate = LocalDate.of(2028, 3, 1);
     private final LocalDate shipmentDate = paymentDate.plusMonths(1);
-    private RelatedFixtures fixture;
-    private UUID conversation;
+    RelatedFixtures fixture;
+    UUID conversation;
     private HttpServer server;
 
     @BeforeEach
@@ -284,7 +284,7 @@ class ScheduleImportAcceptanceTest {
         return workflow.preview(stored.operationId(), stored.revision(), mode, number, date);
     }
 
-    private UUID message(AiChatMessageEntityType type, String content) {
+    UUID message(AiChatMessageEntityType type, String content) {
         var message = internal.create(AiChatMessageEntity.class);
         message.setConversation(internal.load(AiConversationEntity.class).id(conversation).one());
         message.setType(type); message.setContent(content);
@@ -308,7 +308,7 @@ class ScheduleImportAcceptanceTest {
                 .anySatisfy(r -> { assertThat(r.date()).isEqualTo(august); assertThat(r.before()).isNull(); });
     }
 
-    private void assertAddendum(UUID id, ScheduleImportPreview preview, String kind, String opposite) {
+    void assertAddendum(UUID id, ScheduleImportPreview preview, String kind, String opposite) {
         var addendum = data.load(Addendum.class).id(id).one();
         assertThat(addendum.getNumber()).isEqualTo(preview.number());
         assertThat(addendum.getEffectiveDate()).isEqualTo(preview.effectiveDate());
@@ -322,7 +322,7 @@ class ScheduleImportAcceptanceTest {
                 .query("select e from " + opposite + "ScheduleCorrection e where e.addendum.id = :id").parameter("id", id).list()).isEmpty();
     }
 
-    private void assertReports(LocalDate boundary, List<Row> payment, List<Row> shipment, UUID paymentId, UUID shipmentId, boolean base) {
+    void assertReports(LocalDate boundary, List<Row> payment, List<Row> shipment, UUID paymentId, UUID shipmentId, boolean base) {
         var params = new HashMap<String, Object>(Map.of("reportDate", boundary, "customer", fixture.customer,
                 "contract", fixture.contract, "project", fixture.project,
                 "calendarMode", base ? CashflowCalendarMode.BASE : CashflowCalendarMode.ACTUAL_WITH_ADDENDUMS,
@@ -379,7 +379,7 @@ class ScheduleImportAcceptanceTest {
         return rows.stream().filter(r -> r.date().equals(date)).map(Row::amount).findFirst().orElse(BigDecimal.ZERO);
     }
     private BigDecimal total(List<Row> rows) { return rows.stream().map(Row::amount).reduce(BigDecimal.ZERO, BigDecimal::add); }
-    private List<Long> counts() {
+    List<Long> counts() {
         return java.util.stream.Stream.of("PaymentScheduleItem", "ShipmentScheduleItem", "Addendum", "PaymentScheduleCorrection",
                         "ShipmentScheduleCorrection", "PaymentScheduleCorrectionItem", "ShipmentScheduleCorrectionItem")
                 .map(e -> internal.loadValue("select count(e) from " + e + " e", Long.class).one()).toList();

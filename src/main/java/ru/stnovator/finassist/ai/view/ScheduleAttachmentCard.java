@@ -8,7 +8,11 @@ import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.server.HttpStatusCode;
 import com.vaadin.flow.server.streams.DownloadHandler;
-import com.vaadin.flow.server.streams.DownloadResponse;
+import com.vaadin.flow.server.streams.DownloadEvent;
+import org.springframework.http.ContentDisposition;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import io.jmix.core.FileStorageException;
 import io.jmix.core.Messages;
 import ru.stnovator.finassist.ai.schedule.ScheduleAttachmentService;
@@ -54,16 +58,7 @@ final class ScheduleAttachmentCard extends Div {
             card.addProcessing(messages, store.attachmentProcessing(conversationId, file.id(), file.sourceMessageId()));
         }
         if (file.available() && file.sourceMessageId() != null) {
-            var handler = DownloadHandler.fromInputStream(event -> {
-                event.getResponse().setHeader("Cache-Control", "private, no-store");
-                try {
-                    var original = attachments.openSubmitted(file.id(), conversationId, file.sourceMessageId());
-                    return new DownloadResponse(original.stream(), original.fileName(),
-                            "application/octet-stream", original.sizeBytes());
-                } catch (SecurityException | IllegalStateException | FileStorageException unavailable) {
-                    return DownloadResponse.error(HttpStatusCode.NOT_FOUND);
-                }
-            });
+            DownloadHandler handler = event -> download(event, attachments, conversationId, file);
             var link = new Anchor(handler, AttachmentType.DOWNLOAD,
                     messages.getMessage(GROUP, "scheduleImport.downloadAttachment"));
             card.add(link);
@@ -71,6 +66,28 @@ final class ScheduleAttachmentCard extends Div {
             card.add(new Span(messages.getMessage(GROUP, "scheduleImport.attachmentUnavailable")));
         }
         return card;
+    }
+
+    static void download(DownloadEvent event, ScheduleAttachmentService attachments,
+                         UUID conversationId, SubmittedAttachment file) throws IOException {
+        var response = event.getResponse();
+        response.setHeader("Cache-Control", "private, no-store");
+        ScheduleAttachmentService.SubmittedDownload original;
+        try {
+            original = attachments.openSubmitted(file.id(), conversationId, file.sourceMessageId());
+        } catch (SecurityException | IllegalStateException | FileStorageException unavailable) {
+            response.setStatus(HttpStatusCode.NOT_FOUND.getCode());
+            return;
+        }
+        try (var input = original.stream()) {
+            response.setHeader("Content-Disposition", ContentDisposition.attachment()
+                    .filename(original.fileName(), StandardCharsets.UTF_8).build().toString());
+            event.setContentType("application/octet-stream");
+            event.setContentLength(original.sizeBytes());
+            try (var output = event.getOutputStream()) {
+                input.transferTo(output);
+            }
+        }
     }
 
     private void addProcessing(Messages messages, AttachmentProcessing processing) {
