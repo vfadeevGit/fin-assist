@@ -3,13 +3,14 @@ package ru.stnovator.finassist.ai;
 import ru.stnovator.finassist.ai.schedule.ScheduleImportPreview;
 import ru.stnovator.finassist.ai.schedule.ScheduleImportTypes;
 
+import java.math.BigDecimal;
 import java.util.Objects;
 import io.jmix.core.Messages;
 import org.springframework.stereotype.Component;
 
 /** Authoritative native assistant content, including every normalized row and date-bucket difference. */
 @Component
-class ScheduleProposalText {
+public class ScheduleProposalText {
     private final Messages messages;
 
     ScheduleProposalText(Messages messages) {
@@ -22,6 +23,12 @@ class ScheduleProposalText {
 
     String action(ScheduleImportTypes.Mode mode) {
         return label("proposed" + mode);
+    }
+
+    public String receipt(ScheduleImportTypes.Mode mode, int rowCount, BigDecimal total) {
+        return label("saved") + ". " + action(mode) + ". "
+                + label("rowCount") + ": " + rowCount + ". "
+                + label("total") + ": " + total.toPlainString() + ".";
     }
 
     String render(ScheduleImportPreview preview, String source) {

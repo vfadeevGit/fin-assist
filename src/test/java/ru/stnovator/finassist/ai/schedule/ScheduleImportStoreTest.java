@@ -70,8 +70,12 @@ class ScheduleImportStoreTest {
                     .contains(new ScheduleImportStore.ReceiptDestination("PaymentSchedule", result));
             assertThat(store.receiptForMessage(conversation, UUID.randomUUID())).isEmpty();
             assertThat(store.receiptForMessage(otherId, message)).isEmpty();
+            assertThat(store.receiptsWithoutMessage(conversation)).extracting(ScheduleImportStore.ReceiptSnapshot::operationId)
+                    .containsExactly(message);
+            assertThat(store.receiptsWithoutMessage(otherId)).isEmpty();
             login("receipt-intruder");
             assertThatThrownBy(() -> store.receiptForMessage(conversation, message)).isInstanceOf(SecurityException.class);
+            assertThatThrownBy(() -> store.receiptsWithoutMessage(conversation)).isInstanceOf(SecurityException.class);
         } finally {
             internal.remove(internal.load(AiConversationEntity.class).id(otherId).one());
         }

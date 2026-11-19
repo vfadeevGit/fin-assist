@@ -4,6 +4,8 @@ import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.html.Span;
+import com.vaadin.flow.component.markdown.Markdown;
+import com.vaadin.flow.router.RouteParameters;
 import io.jmix.aitoolsflowuidata.entity.AiConversationEntity;
 import io.jmix.core.*;
 import io.jmix.core.security.SystemAuthenticator;
@@ -24,6 +26,13 @@ import io.jmix.aitoolsflowui.model.AiChatMessageType;
 import io.jmix.aitoolsflowui.service.AiChatMessageService;
 import io.jmix.aitoolsflowui.service.AiConversationService;
 import io.jmix.aitoolsflowui.view.chat.support.TimelineItemFactory;
+import io.jmix.aitoolsflowui.view.chat.AiChatView;
+import io.jmix.aitoolsflowui.view.chat.timeline.TimelineItem;
+import io.jmix.aitoolsflowui.view.chathub.AiChatHubView;
+import io.jmix.flowui.ViewNavigators;
+import io.jmix.flowui.model.CollectionContainer;
+import org.springframework.test.util.ReflectionTestUtils;
+import ru.stnovator.finassist.ai.view.ScheduleAiChatFragment;
 import io.jmix.aitoolsflowui.view.chat.renderer.TimelineItemRenderer;
 import io.jmix.flowui.Fragments;
 import ru.stnovator.finassist.entity.*;
@@ -48,6 +57,8 @@ class ScheduleImportResultUiTest {
     @Autowired SystemAuthenticator auth;
     @Autowired ScheduleImportStore store;
     @Autowired ScheduleImportWorkflow workflow;
+    @Autowired ScheduleImportCommitService commit;
+    @Autowired ViewNavigators navigators;
     @Autowired ScheduleAiChatDataService chat;
     @Autowired ScheduleConversationConfirmationService confirmations;
     @Autowired AiConversationService conversations;
@@ -97,21 +108,25 @@ class ScheduleImportResultUiTest {
         fixture.close();
     }
 
-    UUID savedReceipt(Kind kind) {
+    private ScheduleImportPreview prepare(Kind kind) {
         var draft = workflow.start(conversation, kind);
         draft = workflow.setRows(draft.operationId(), draft.revision(), List.of(
                 new InputRow("2026-12-01", "1200.10", "1"),
                 new InputRow("2026-12-02", "34.46", "2")), null);
         workflow.selectContract(draft.operationId(), draft.revision(), fixture.contract.getId());
         draft = store.load(draft.operationId());
-        var preview = workflow.preview(draft.operationId(), draft.revision(), Mode.FILL, null, null);
+        return workflow.preview(draft.operationId(), draft.revision(), Mode.FILL, null, null);
+    }
+
+    UUID savedReceipt(Kind kind) {
+        var preview = prepare(kind);
         var nativeChat = Objects.requireNonNull(conversations.loadConversation(conversation));
         var proposal = messages.createMessage(nativeChat, AiChatMessageType.ASSISTANT, presentation.render(preview, "Текст"));
-        confirmations.publishProposal(draft.operationId(), preview.revision(), proposal.getId());
+        confirmations.publishProposal(preview.operationId(), preview.revision(), proposal.getId());
         var actual = messages.createMessage(nativeChat, AiChatMessageType.USER, "Да");
         confirmations.captureObservation(conversation, actual.getId(), proposal.getId(), preview.revision());
         assertThat(chat.processMessage(actual)).contains("Сохранено");
-        return draft.operationId();
+        return preview.operationId();
     }
 
     Component renderReceipt(UUID messageId) {
@@ -141,6 +156,8 @@ class ScheduleImportResultUiTest {
         changeCurrentAmount(kind);
         var reloaded = renderReceipt(receipt);
         assertThat(anchors(reloaded)).singleElement().satisfies(link -> assertThat(link.getHref()).endsWith("/" + resultId));
+        assertThat(timelineItems(openTimeline(conversation)).stream().filter(item -> receipt.equals(item.getMessage().getId())))
+                .hasSize(1);
     }
 
     @ParameterizedTest
@@ -155,6 +172,63 @@ class ScheduleImportResultUiTest {
         assertThat(reloaded.isVisible()).isTrue();
         assertThat(spans(reloaded)).contains("Ссылка на сохранённый результат недоступна");
         assertThat(spans(reloaded)).allSatisfy(text -> assertThat(text).doesNotContain("999", "related-", resultId.toString()));
+    }
+
+    @Test
+    void legacySaveWithoutAnAssistantMessageRestoresOneReceiptAndChecksTheCurrentLinkAccess() {
+        var preview = prepare(Kind.PAYMENT);
+        var saved = commit.confirm(preview.operationId(), preview.revision());
+        var nativeChat = Objects.requireNonNull(conversations.loadConversation(conversation));
+        assertThat(messages.loadMessages(nativeChat)).isEmpty();
+        changeCurrentAmount(Kind.PAYMENT);
+
+        for (int visit = 0; visit < 2; visit++) {
+            var receipt = renderBoundLegacyReceipt(saved.operationId());
+            assertThat(anchors(receipt)).singleElement()
+                    .satisfies(link -> assertThat(link.getHref()).endsWith("/" + saved.entityId()));
+        }
+
+        var other = conversations.create();
+        try {
+            assertThat(timelineItems(openTimeline(other.getId()))).isEmpty();
+        } finally {
+            conversations.remove(other);
+        }
+
+        DashboardFixtures.authenticate(owner, "ROLE_ai-schedule-import");
+        var receipt = renderBoundLegacyReceipt(saved.operationId());
+        assertThat(anchors(receipt)).isEmpty();
+        assertThat(spans(receipt)).contains("Ссылка на сохранённый результат недоступна");
+        assertThat(messages.loadMessages(nativeChat)).isEmpty();
+    }
+
+    private Component renderBoundLegacyReceipt(UUID operationId) {
+        var fragment = openTimeline(conversation);
+        var items = timelineItems(fragment);
+        assertThat(items).singleElement().satisfies(item -> {
+            assertThat(item.getMessage().getId()).isEqualTo(operationId);
+            assertThat(item.getMessage().getContent()).contains("Строк: 2", "1234.56").doesNotContain("999", "](");
+        });
+        var renderer = fragments.create(fragment, TimelineItemRenderer.class);
+        renderer.setItem(items.getFirst());
+        assertThat(components(renderer.getContent()).filter(Markdown.class::isInstance)
+                .map(Markdown.class::cast).map(Markdown::getContent))
+                .singleElement().satisfies(text -> assertThat(text).contains("Строк: 2", "1234.56"));
+        return renderer.getContent();
+    }
+
+    private ScheduleAiChatFragment openTimeline(UUID chatId) {
+        navigators.view(UiTestUtils.getCurrentView(), AiChatHubView.class).navigate();
+        navigators.view(UiTestUtils.getCurrentView(), AiChatView.class)
+                .withRouteParameters(new RouteParameters("id", chatId.toString())).navigate();
+        return (ScheduleAiChatFragment) UiTestUtils.getComponent(UiTestUtils.getCurrentView(), "chatFragment");
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<TimelineItem> timelineItems(ScheduleAiChatFragment fragment) {
+        var container = (CollectionContainer<TimelineItem>) Objects.requireNonNull(
+                ReflectionTestUtils.getField(fragment, "timelineItemsDc"));
+        return container.getItems();
     }
 
     void changeCurrentAmount(Kind kind) {

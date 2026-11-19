@@ -13,10 +13,15 @@ import io.jmix.flowui.fragment.FragmentDescriptor;
 import io.jmix.flowui.view.Subscribe;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Autowired;
+import ru.stnovator.finassist.ai.ScheduleProposalText;
 import ru.stnovator.finassist.ai.schedule.*;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @FragmentDescriptor("schedule-ai-chat-fragment.xml")
 public class ScheduleAiChatFragment extends AiChatFragment {
@@ -28,6 +33,8 @@ public class ScheduleAiChatFragment extends AiChatFragment {
     private ScheduleConversationConfirmationService confirmations;
     @Autowired
     private Messages messages;
+    @Autowired
+    private ScheduleProposalText presentation;
     private ScheduleConversationConfirmationService.Proposal displayed;
     private ScheduleConversationConfirmationService.Proposal submittedObservation;
     private ScheduleConversationConfirmationService.Proposal retryObservation;
@@ -73,6 +80,32 @@ public class ScheduleAiChatFragment extends AiChatFragment {
         super.setConversation(value);
         restoreImport();
         refreshConversationFiles();
+    }
+
+    @Override
+    protected Collection<AiChatMessage> loadMessages() {
+        var bound = conversation;
+        if (bound == null || bound.getId() == null) return super.loadMessages();
+
+        var receipts = store.receiptsWithoutMessage(bound.getId());
+        var nativeMessages = super.loadMessages();
+        if (receipts.isEmpty()) return nativeMessages;
+
+        var timeline = new ArrayList<>(nativeMessages);
+        var nativeIds = nativeMessages.stream().map(AiChatMessage::getId).collect(Collectors.toSet());
+        // Restore display-only receipts. A native receipt published during this load takes precedence.
+        for (var receipt : receipts) {
+            if (nativeIds.contains(receipt.operationId())) continue;
+            var message = dataManager.create(AiChatMessage.class);
+            message.setId(receipt.operationId());
+            message.setConversation(bound);
+            message.setType(AiChatMessageType.ASSISTANT);
+            message.setCreatedDate(receipt.savedAt());
+            message.setContent(presentation.receipt(receipt.mode(), receipt.rowCount(), receipt.total()));
+            timeline.add(message);
+        }
+        timeline.sort(Comparator.comparing(message -> message.getCreatedDate().toInstant()));
+        return timeline;
     }
 
     private void refreshConversationFiles() {

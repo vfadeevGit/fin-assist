@@ -152,9 +152,7 @@ public class ScheduleAiChatDataService extends AiChatDataService {
     private String receipt(ScheduleImportCommitService.CommitResult result) {
         var content = store.load(result.operationId()).content();
         var total = content.rows().stream().map(ScheduleImportTypes.Row::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
-        return presentation.label("saved") + ". " + presentation.action(content.mode()) + ". "
-                + presentation.label("rowCount") + ": " + content.rows().size() + ". "
-                + presentation.label("total") + ": " + total.toPlainString() + ".";
+        return presentation.receipt(content.mode(), content.rows().size(), total);
     }
 
     @Override

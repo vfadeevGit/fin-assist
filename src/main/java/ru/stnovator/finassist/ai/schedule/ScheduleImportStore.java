@@ -78,6 +78,29 @@ public class ScheduleImportStore {
                 .map(saved -> new ReceiptDestination(ScheduleImportCommitService.resultType(saved.content()).getSimpleName(), saved.resultId()));
     }
 
+    public record ReceiptSnapshot(UUID operationId, OffsetDateTime savedAt, Mode mode, int rowCount, BigDecimal total) {}
+
+    /** Saved before native receipt publication, or whose native receipt no longer exists. */
+    @Transactional(readOnly = true)
+    public List<ReceiptSnapshot> receiptsWithoutMessage(UUID conversationId) {
+        ownership.conversation(conversationId);
+        return data.load(AiScheduleImport.class).query("""
+                select e from AiScheduleImport e
+                where e.originalConversationId = :conversation and e.owner = :owner and e.status = :status
+                  and not exists (select m.id from aitls_AiChatMessageEntity m
+                                  where m.id = e.id and m.conversation.id = :conversation)
+                order by e.terminalAt, e.id
+                """).parameter("conversation", conversationId).parameter("owner", ownership.username())
+                .parameter("status", Status.SAVED.name()).list().stream().map(this::draft)
+                .map(receipt -> {
+                    var content = receipt.content();
+                    var total = content.rows().stream().map(Row::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
+                    return new ReceiptSnapshot(receipt.operationId(),
+                            Objects.requireNonNullElse(receipt.terminalAt(), receipt.createdAt()),
+                            content.mode(), content.rows().size(), total);
+                }).toList();
+    }
+
     /** Resolve the newest request that selected this exact submitted file. */
     @Transactional(readOnly = true)
     public AttachmentProcessing attachmentProcessing(UUID conversationId, UUID attachmentId, UUID sourceMessageId) {
