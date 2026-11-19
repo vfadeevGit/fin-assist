@@ -10,6 +10,7 @@ import io.jmix.aitoolsflowui.service.AiConversationService;
 import io.jmix.aitoolsflowui.service.AiChatMessageService;
 import io.jmix.aitoolsflowui.view.chat.AiChatView;
 import io.jmix.aitoolsflowui.view.chat.support.AssistantResponseTaskCoordinator;
+import io.jmix.aitoolsflowui.view.chat.timeline.TimelineItem;
 import io.jmix.aitoolsflowui.view.chat.AiChatFragment;
 import io.jmix.aitoolsflowui.view.chathub.AiChatHubView;
 import io.jmix.aitoolsflowui.view.chathub.AiChatHubFragment;
@@ -19,6 +20,7 @@ import io.jmix.core.security.SystemAuthenticator;
 import io.jmix.flowui.Fragments;
 import io.jmix.flowui.ViewNavigators;
 import io.jmix.flowui.fragment.FragmentUtils;
+import io.jmix.flowui.model.CollectionContainer;
 import io.jmix.flowui.upload.TemporaryStorage;
 import io.jmix.flowui.component.upload.UploadSucceededEvent;
 import io.jmix.flowui.component.textarea.JmixTextArea;
@@ -30,6 +32,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import ru.stnovator.finassist.FinAssistApplication;
 import ru.stnovator.finassist.ai.schedule.*;
+import ru.stnovator.finassist.ai.schedule.ScheduleImportStore.AttachmentProcessing;
+import ru.stnovator.finassist.ai.schedule.ScheduleImportStore.AttachmentStage;
 import ru.stnovator.finassist.ai.view.*;
 import ru.stnovator.finassist.service.ScheduleComparison;
 
@@ -39,12 +43,11 @@ import java.util.*;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
-import static ru.stnovator.finassist.ai.schedule.ScheduleImportStore.*;
 import static ru.stnovator.finassist.ai.schedule.ScheduleImportTypes.*;
 
 @UiTest
 @SpringBootTest(classes = {FinAssistApplication.class, FlowuiTestAssistConfiguration.class})
-class ScheduleImportUiTest {
+class ScheduleConversationUiTest {
     @Autowired
     io.jmix.core.UnconstrainedDataManager nativeData;
     @Autowired
@@ -70,18 +73,8 @@ class ScheduleImportUiTest {
     @MockitoBean
     ScheduleImportStore store;
     @MockitoBean
-    ScheduleImportWorkflow workflow;
-    @MockitoBean
-    ScheduleImportTool tool;
-    @MockitoBean
-    ScheduleImportCommitService commit;
-    @MockitoBean
     ScheduleConversationConfirmationService confirmations;
-    @MockitoBean
-    EntityLinksTool links;
-    final UUID conversation = UUID.randomUUID(), operation = UUID.randomUUID();
-    ScheduleImportPanel panel;
-    ScheduleImportPreview preview;
+    final UUID operation = UUID.randomUUID();
 
     @BeforeEach
     void setup() {
@@ -89,25 +82,6 @@ class ScheduleImportUiTest {
                 .thenReturn(new AttachmentProcessing(AttachmentStage.ATTACHED, null, null, null, null, 0, null, null));
         when(attachments.listSubmitted(any(UUID.class), anyInt()))
                 .thenReturn(new ScheduleAttachmentService.SubmittedPage(List.of(), 0, null));
-        var rows = java.util.stream.IntStream.range(0, 150).mapToObj(i -> new Row(LocalDate.of(2027, 1, 1).plusDays(i), new BigDecimal("12.34"))).toList();
-        var comparison = ScheduleComparison.compare(List.of(new ScheduleComparison.Entry(LocalDate.of(2026, 1, 1), BigDecimal.TEN)),
-                rows.stream().map(r -> new ScheduleComparison.Entry(r.date(), r.amount())).toList());
-        preview = new ScheduleImportPreview(operation, 7, "Contract", "Only project", Kind.PAYMENT, Mode.ADDENDUM, "A-1", LocalDate.of(2027, 1, 1), rows, comparison, comparison.afterTotal(), "secret", false);
-        when(store.load(operation)).thenReturn(draft(conversation, 7, Status.PREVIEW_READY));
-        when(tool.conversationState(conversation)).thenReturn(List.of(state("UI_CONFIRMATION")));
-        when(workflow.getPreview(operation, 7)).thenReturn(preview);
-        panel = new ScheduleImportPanel(store, workflow, tool, commit, links, messages, attachments, prompt -> {
-        });
-        panel.bind(conversation);
-    }
-
-    Draft draft(UUID chat, long revision, Status status) {
-        return new Draft(operation, chat, revision, status, null, null, null, null,
-                new DraftContent(Kind.PAYMENT, null, null, null, preview.rows(), UUID.randomUUID(), UUID.randomUUID(), Mode.ADDENDUM, "A-1", preview.effectiveDate(), "secret"));
-    }
-
-    ScheduleImportTool.State state(String next) {
-        return new ScheduleImportTool.State(operation, 7, Status.PREVIEW_READY, Kind.PAYMENT, null, null, null, 150, preview.total(), null, null, Set.of(Mode.ADDENDUM), Mode.ADDENDUM, "A-1", preview.effectiveDate(), next, null);
     }
 
     @Test
@@ -410,9 +384,7 @@ class ScheduleImportUiTest {
                 overview.setOpened(true);
                 assertThat(overview.getElement().getTextRecursively()).contains("Прикреплён к сообщению");
 
-                @SuppressWarnings("unchecked")
-                var items = (io.jmix.flowui.model.CollectionContainer<io.jmix.aitoolsflowui.view.chat.timeline.TimelineItem>)
-                        org.springframework.test.util.ReflectionTestUtils.getField(fragment, "timelineItemsDc");
+                var items = timelineItems(fragment);
                 var refreshed = new ArrayList<UUID>();
                 items.addCollectionChangeListener(event -> {
                     if (event.getChangeType() == io.jmix.flowui.model.CollectionChangeType.SET_ITEM) {
@@ -439,6 +411,12 @@ class ScheduleImportUiTest {
                 conversations.remove(chat);
             }
         });
+    }
+
+    @SuppressWarnings("unchecked")
+    private CollectionContainer<TimelineItem> timelineItems(ScheduleAiChatFragment fragment) {
+        return (CollectionContainer<TimelineItem>) Objects.requireNonNull(
+                org.springframework.test.util.ReflectionTestUtils.getField(fragment, "timelineItemsDc"));
     }
 
     private com.vaadin.flow.component.details.Details conversationFileOverview(ScheduleAiChatFragment fragment) {
@@ -524,44 +502,6 @@ class ScheduleImportUiTest {
     }
 
     @Test
-    void reloadRestoresSavedResultAlongsideActiveDraft() {
-        UUID id = UUID.randomUUID();
-        var receipt = new Draft(operation, conversation, 8, Status.SAVED, null, null, null, id, draft(conversation, 7, Status.SAVED).content());
-        when(store.savedForConversation(conversation)).thenReturn(List.of(receipt));
-        when(links.getEntityLinks("Addendum", List.of(id.toString()))).thenReturn(List.of(new EntityLinksTool.Link(true, "/addendums/" + id, "A-1")));
-        // The same operation cannot be both active and saved: restore another receipt, preserving the active one.
-        UUID saved = UUID.randomUUID();
-        receipt = new Draft(saved, conversation, 8, Status.SAVED, null, null, null, id, receipt.content());
-        when(store.savedForConversation(conversation)).thenReturn(List.of(receipt));
-        when(store.load(saved)).thenReturn(receipt);
-        panel.bind(conversation);
-        assertThat(panel.getPreview()).isEqualTo(preview);
-        assertThat(panel.getChildren().flatMap(c -> c.getChildren()).filter(c -> c instanceof com.vaadin.flow.component.html.Anchor).count()).isEqualTo(1);
-    }
-
-    @Test
-    void savedResultCaptionsUseBusinessNamesWithoutTechnicalLabelsOrIds() {
-        record CaptionCase(Kind kind, Mode mode, String entity, String expected) {}
-        for (var item : List.of(new CaptionCase(Kind.PAYMENT, Mode.FILL, "PaymentSchedule", "Сохранён график оплат"),
-                new CaptionCase(Kind.SHIPMENT, Mode.FILL, "ShipmentSchedule", "Сохранён график отгрузок"),
-                new CaptionCase(Kind.PAYMENT, Mode.ADDENDUM, "Addendum", "Сохранено дополнительное соглашение"))) {
-            UUID saved = UUID.randomUUID(), resultId = UUID.randomUUID();
-            var content = new DraftContent(item.kind(), null, null, null, List.of(), null, null, item.mode(), null, null, null);
-            var receipt = new Draft(saved, conversation, 8, Status.SAVED, null, null, null, resultId, content);
-            when(store.savedForConversation(conversation)).thenReturn(List.of(receipt));
-            when(store.load(saved)).thenReturn(receipt);
-            when(links.getEntityLinks(item.entity(), List.of(resultId.toString())))
-                    .thenReturn(List.of(new EntityLinksTool.Link(true, "/result/" + resultId, item.entity() + " " + resultId)));
-            panel.bind(conversation);
-            var captions = panel.getChildren().flatMap(com.vaadin.flow.component.Component::getChildren)
-                    .filter(com.vaadin.flow.component.html.Anchor.class::isInstance)
-                    .map(com.vaadin.flow.component.html.Anchor.class::cast).map(com.vaadin.flow.component.html.Anchor::getText).toList();
-            assertThat(captions).containsExactly(item.expected());
-            assertThat(captions).allSatisfy(caption -> assertThat(caption).doesNotContain("PaymentSchedule", "ShipmentSchedule", "Addendum", resultId.toString()));
-        }
-    }
-
-    @Test
     void nativeHubAndDirectChatUseReplacement() {
         auth.runWithUser("admin", () -> {
             navigators.view(UiTestUtils.getCurrentView(), AiChatHubView.class).navigate();
@@ -573,94 +513,54 @@ class ScheduleImportUiTest {
     }
 
     @Test
-    void singleProjectNeedsNoPicker() {
-        assertThat(panel.getPreview()).isEqualTo(preview);
+    void nativeTimelineRestoresEveryProposalRowAndKeepsTheQuestionOutsideTheTables() {
+        var dates = LocalDate.of(2027, 1, 1).datesUntil(LocalDate.of(2027, 5, 31)).toList();
+        var rows = dates.stream().map(date -> new Row(date, new BigDecimal("12.34"))).toList();
+        var comparison = ScheduleComparison.compare(List.of(new ScheduleComparison.Entry(LocalDate.of(2026, 1, 1), BigDecimal.TEN)),
+                rows.stream().map(r -> new ScheduleComparison.Entry(r.date(), r.amount())).toList());
+        var preview = new ScheduleImportPreview(operation, 7, "Contract", "Only project", Kind.PAYMENT, Mode.ADDENDUM,
+                "A-1", LocalDate.of(2027, 1, 1), rows, comparison, comparison.afterTotal(), "fingerprint", false);
+        auth.runWithUser("admin", () -> {
+            var chat = conversations.create();
+            try {
+                var proposal = chatMessages.createMessage(chat, AiChatMessageType.ASSISTANT,
+                        new ScheduleProposalText(messages).render(preview, "Январь <img src=x onerror=alert(1)>.xls"));
+                for (int visit = 0; visit < 2; visit++) {
+                    navigators.view(UiTestUtils.getCurrentView(), AiChatHubView.class).navigate();
+                    navigators.view(UiTestUtils.getCurrentView(), AiChatView.class)
+                            .withRouteParameters(new com.vaadin.flow.router.RouteParameters("id", chat.getId().toString())).navigate();
+                    var fragment = (ScheduleAiChatFragment) UiTestUtils.getComponent(UiTestUtils.getCurrentView(), "chatFragment");
+                    assertThat(ScheduleImportResultUiTest.components(fragment.getContent()).flatMap(c -> c.getId().stream()))
+                            .doesNotContain("scheduleImportPanel", "scheduleConfirm", "scheduleCorrect",
+                                    "scheduleCancel", "scheduleRefresh");
+
+                    assertThat(timelineItems(fragment).getItems()).singleElement().satisfies(item -> {
+                        assertThat(item.getMessage().getId()).isEqualTo(proposal.getId());
+                        var renderer = fragments.create(fragment, io.jmix.aitoolsflowui.view.chat.renderer.TimelineItemRenderer.class);
+                        renderer.setItem(item);
+                        var markdown = ScheduleImportResultUiTest.components(renderer.getContent())
+                                .filter(com.vaadin.flow.component.markdown.Markdown.class::isInstance)
+                                .map(com.vaadin.flow.component.markdown.Markdown.class::cast).findFirst().orElseThrow();
+                        var content = markdown.getContent();
+                        assertThat(content).contains("Contract", "Only project", "Январь &#60;img src&#61;x", "1851.00")
+                                .doesNotContain("<img", "onerror=")
+                                .contains("class=\"schedule-proposal-table\" role=\"region\" tabindex=\"0\" aria-label=\"Полный график\"",
+                                        "class=\"schedule-proposal-table\" role=\"region\" tabindex=\"0\" aria-label=\"Изменения\"")
+                                .endsWith("</div>\n\nПрименить эти изменения?");
+                        var scheduleRows = content.lines().filter(line -> line.endsWith("| 12.34 |")
+                                && line.split("\\|").length == 3).toList();
+                        assertThat(scheduleRows).hasSize(150)
+                                .containsExactlyElementsOf(dates.stream().map(date -> "| " + date + " | 12.34 |").toList());
+                        var addedRows = content.lines().filter(line -> line.endsWith("| — | 12.34 | 12.34 |")).toList();
+                        assertThat(addedRows).hasSize(150)
+                                .containsExactlyElementsOf(dates.stream().map(date -> "| " + date + " | — | 12.34 | 12.34 |").toList());
+                        assertThat(content).contains("| 2026-01-01 | 10 | — | -10 |");
+                    });
+                }
+            } finally {
+                conversations.remove(chat);
+            }
+        });
     }
 
-    @Test
-    void rendersEveryPreviewRowAndAllChanges() {
-        assertThat(panel.getRowsGrid().getListDataView().getItems().toList()).containsExactlyElementsOf(preview.rows());
-        assertThat(panel.getChangesGrid().getListDataView().getItems().toList()).containsExactlyElementsOf(preview.comparison().rows());
-    }
-
-    @Test
-    void confirmationKeepsSnapshotSummaryWhenResultLinkIsUnavailable() {
-        var ui = com.vaadin.flow.component.UI.getCurrent();
-        var previousLocale = ui.getLocale();
-        ui.setLocale(Locale.forLanguageTag("ru-RU"));
-        try {
-            when(commit.confirm(operation, 7)).thenReturn(new ScheduleImportCommitService.CommitResult(operation, "Addendum", UUID.randomUUID(), false));
-            // Resolver's empty result represents a missing or inaccessible destination.
-            panel.getConfirmButton().click();
-            assertThat(panel.getResult()).isNotNull();
-            var visible = panel.getChildren().flatMap(com.vaadin.flow.component.Component::getChildren)
-                    .filter(com.vaadin.flow.component.html.Span.class::isInstance)
-                    .map(com.vaadin.flow.component.html.Span.class::cast).map(com.vaadin.flow.component.html.Span::getText).toList();
-            assertThat(visible).anySatisfy(text -> assertThat(text.replace('\u00a0', ' ').replace('\u202f', ' '))
-                    .contains("Сохранено дополнительное соглашение", "Строк: 150", "Итого: 1 851,00"));
-            assertThat(visible).contains("Ссылка на сохранённый результат недоступна");
-        } finally {
-            ui.setLocale(previousLocale);
-        }
-    }
-
-    @Test
-    void confirmInvokesOnlyDisplayedRevision() {
-        when(commit.confirm(operation, 7)).thenReturn(new ScheduleImportCommitService.CommitResult(operation, "PaymentSchedule", UUID.randomUUID(), false));
-        panel.getConfirmButton().click();
-        verify(commit).confirm(operation, 7);
-    }
-
-    @Test
-    void switchingConversationClearsPendingConfirmation() {
-        panel.bind(UUID.randomUUID());
-        assertThat(panel.getPreview()).isNull();
-        assertThat(panel.getConfirmButton().isEnabled()).isFalse();
-        panel.getConfirmButton().click();
-        verifyNoInteractions(commit);
-    }
-
-    @Test
-    void sameUserCrossConversationCannotDisplayOrConfirm() {
-        when(store.load(operation)).thenReturn(draft(UUID.randomUUID(), 7, Status.PREVIEW_READY));
-        panel.showPreview(operation, 7);
-        assertThat(panel.getConfirmButton().isEnabled()).isFalse();
-        panel.getConfirmButton().click();
-        verifyNoInteractions(commit);
-    }
-
-    @Test
-    void sameUserCrossConversationCannotConfirmAfterDisplay() {
-        when(store.load(operation)).thenReturn(draft(UUID.randomUUID(), 7, Status.PREVIEW_READY));
-        panel.getConfirmButton().click();
-        verifyNoInteractions(commit);
-        assertThat(panel.getConfirmButton().isEnabled()).isFalse();
-    }
-
-    @Test
-    void unavailableSelectionIsNeverConfirmable() {
-        when(tool.conversationState(conversation)).thenReturn(List.of(state("SELECTION_UNAVAILABLE")));
-        panel.bind(conversation);
-        assertThat(panel.getConfirmButton().isEnabled()).isFalse();
-        panel.showPreview(operation, 7);
-        assertThat(panel.getConfirmButton().isEnabled()).isFalse();
-    }
-
-    @Test
-    void changedRevisionOrHistoryRequiresNewPreview() {
-        when(workflow.getPreview(operation, 7)).thenThrow(new ConcurrentModificationException());
-        panel.getConfirmButton().click();
-        verifyNoInteractions(commit);
-        assertThat(panel.getConfirmButton().isEnabled()).isFalse();
-    }
-
-    @Test
-    void doubleClickReturnsSameResult() {
-        var result = new ScheduleImportCommitService.CommitResult(operation, "PaymentSchedule", UUID.randomUUID(), false);
-        when(commit.confirm(operation, 7)).thenReturn(result);
-        panel.getConfirmButton().click();
-        panel.getConfirmButton().click();
-        verify(commit, times(1)).confirm(operation, 7);
-        assertThat(panel.getResult()).isEqualTo(result);
-    }
 }

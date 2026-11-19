@@ -78,15 +78,6 @@ public class ScheduleImportStore {
                 .map(saved -> new ReceiptDestination(ScheduleImportCommitService.resultType(saved.content()).getSimpleName(), saved.resultId()));
     }
 
-    /** Owned durable receipts, independent of chat history and UI session state. */
-    @Transactional(readOnly = true)
-    public List<Draft> savedForConversation(UUID conversationId) {
-        ownership.conversation(conversationId);
-        return data.load(AiScheduleImport.class)
-                .query("select e from AiScheduleImport e where e.originalConversationId=:conversation and e.owner=:owner and e.status=:status order by e.terminalAt desc, e.id")
-                .parameter("conversation", conversationId).parameter("owner", ownership.username())
-                .parameter("status", Status.SAVED.name()).list().stream().map(this::draft).toList();
-    }
     /** Resolve the newest request that selected this exact submitted file. */
     @Transactional(readOnly = true)
     public AttachmentProcessing attachmentProcessing(UUID conversationId, UUID attachmentId, UUID sourceMessageId) {

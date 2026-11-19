@@ -33,15 +33,25 @@ class ScheduleProposalText {
             field(text, "addendum", literal(preview.number()) + " · " + preview.effectiveDate());
         field(text, "rowCount", String.valueOf(preview.rows().size()));
         field(text, "total", preview.total().toPlainString());
-        text.append("\n\n| ").append(label("date")).append(" | ").append(label("amount")).append(" |\n| --- | ---: |\n");
+        beginTable(text, "previewSchedule");
+        text.append("| ").append(label("date")).append(" | ").append(label("amount")).append(" |\n| --- | ---: |\n");
         for (var row : preview.rows())
             text.append("| ").append(row.date()).append(" | ").append(row.amount().toPlainString()).append(" |\n");
-        text.append("\n| ").append(label("date")).append(" | ").append(label("before")).append(" | ")
+        text.append("\n</div>");
+        beginTable(text, "changes");
+        text.append("| ").append(label("date")).append(" | ").append(label("before")).append(" | ")
                 .append(label("after")).append(" | ").append(label("difference")).append(" |\n| --- | ---: | ---: | ---: |\n");
         for (var row : preview.comparison().rows())
             text.append("| ").append(row.date()).append(" | ").append(Objects.toString(row.before(), "—"))
                     .append(" | ").append(Objects.toString(row.after(), "—")).append(" | ").append(row.delta().toPlainString()).append(" |\n");
-        return text.append("\n").append(label("applyQuestion")).toString();
+        return text.append("\n</div>\n\n").append(label("applyQuestion")).toString();
+    }
+
+    private void beginTable(StringBuilder text, String key) {
+        String title = literal(label(key));
+        text.append("\n\n### ").append(title)
+                .append("\n\n<div class=\"schedule-proposal-table\" role=\"region\" tabindex=\"0\" aria-label=\"")
+                .append(title).append("\">\n\n");
     }
 
     private void field(StringBuilder text, String key, String value) {

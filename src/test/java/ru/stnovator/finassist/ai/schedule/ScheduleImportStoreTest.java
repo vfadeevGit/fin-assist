@@ -51,21 +51,29 @@ class ScheduleImportStoreTest {
         assertThat(resumed.status()).isEqualTo(ScheduleImportStore.Status.COLLECTING);
         assertThat(internal.load(AiScheduleImport.class).id(id).one().getContentJson()).contains("schemaVersion");
     }
-    @Test void savedReceiptsRestoreOnlyTheirOwnedConversationInDeterministicOrder() {
-        var other=internal.create(AiConversationEntity.class); other.setUsername(owner); other.setTitle("receipt-other"); other=internal.save(other);
-        UUID first=store.create(conversation), second=store.create(conversation), elsewhere=store.create(other.getId());
-        for(UUID id:List.of(first,second,elsewhere)) {
-            var row=internal.load(AiScheduleImport.class).id(id).one(); row.setStatus("SAVED");
-            row.setTerminalAt(OffsetDateTime.parse("2026-11-15T00:00:00Z")); internal.saveWithoutReload(row);
-        }
+    @Test void nativeReceiptLookupRequiresTheExactOwnedConversationAndMessage() {
+        var other = internal.create(AiConversationEntity.class);
+        other.setUsername(owner);
+        other.setTitle("receipt-other");
+        UUID otherId = internal.save(other).getId();
+        UUID message = store.create(conversation);
+        UUID result = UUID.randomUUID();
         try {
-            var ids=List.of(first,second).stream().sorted(Comparator.comparing(UUID::toString)).toList();
-            assertThat(store.savedForConversation(conversation)).extracting(ScheduleImportStore.Draft::operationId).containsExactlyElementsOf(ids);
-            assertThat(store.savedForConversation(other.getId())).extracting(ScheduleImportStore.Draft::operationId).containsExactly(elsewhere);
+            store.update(message, 0, content(null));
+            assertThat(store.receiptForMessage(conversation, message)).isEmpty();
+            var row = internal.load(AiScheduleImport.class).id(message).one();
+            row.setStatus("SAVED");
+            row.setResultId(result);
+            row.setTerminalAt(OffsetDateTime.now());
+            internal.saveWithoutReload(row);
+            assertThat(store.receiptForMessage(conversation, message))
+                    .contains(new ScheduleImportStore.ReceiptDestination("PaymentSchedule", result));
+            assertThat(store.receiptForMessage(conversation, UUID.randomUUID())).isEmpty();
+            assertThat(store.receiptForMessage(otherId, message)).isEmpty();
             login("receipt-intruder");
-            assertThatThrownBy(()->store.savedForConversation(conversation)).isInstanceOf(SecurityException.class);
+            assertThatThrownBy(() -> store.receiptForMessage(conversation, message)).isInstanceOf(SecurityException.class);
         } finally {
-            internal.remove(internal.load(AiScheduleImport.class).id(elsewhere).one()); internal.remove(other);
+            internal.remove(internal.load(AiConversationEntity.class).id(otherId).one());
         }
     }
     @Test void otherUserCannotReadOrMutate() {
