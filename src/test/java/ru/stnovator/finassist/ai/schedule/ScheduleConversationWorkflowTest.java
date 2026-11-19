@@ -45,7 +45,7 @@ class ScheduleConversationWorkflowTest {
         return data.save(value);
     }
 
-    @Test void changedHistoryProducesANativeStaleReplyWithoutCallingTheModel() {
+    @Test void changedHistoryPublishesAReplacementWithoutCallingTheModel() {
         var old = fixture.fixture.payment(fixture.date, "100");
         var preview = fixture.preview(Kind.PAYMENT, Mode.REPLACE);
         var proposal = message(ASSISTANT, "Применить эти изменения?");
@@ -56,9 +56,11 @@ class ScheduleConversationWorkflowTest {
         fixture.data.saveWithoutReload(old);
         var ui = data.create(AiChatMessage.class);
         ui.setId(yes.getId());
-        assertThat(chat.processMessage(ui)).contains("устарел");
-        assertThat(confirmations.pendingProposal(fixture.conversation)).isEmpty();
-        fixture.assertPending(preview);
+        assertThat(chat.processMessage(ui)).contains("После предпросмотра данные изменились", "101", "Применить");
+        var replacement = confirmations.pendingProposal(fixture.conversation).orElseThrow();
+        assertThat(replacement.operationId()).isEqualTo(preview.operationId());
+        assertThat(replacement.revision()).isGreaterThan(preview.revision());
+        assertThat(fixture.store.load(preview.operationId()).resultId()).isNull();
     }
 
     @Test void actualObservedUserAppliesOnceWithoutAModelAndRestoresTheSameReceipt() {
