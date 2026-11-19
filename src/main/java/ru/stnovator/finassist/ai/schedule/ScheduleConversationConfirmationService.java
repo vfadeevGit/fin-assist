@@ -199,8 +199,11 @@ public class ScheduleConversationConfirmationService {
                         and r.proposal_id=? and r.revision=? and r.outcome is null
                         and r.submitted_digest=sha256(convert_to(m.content,'UTF8'))) as eligible
                 from aitls_ai_chat_message_entity m left join ai_schedule_reply r on r.message_id=m.id
-                where m.conversation_id=? and m.id not in (?,?) and m.created_date>=?
-                  and (m.created_date<=? or m.type_=?)
+                where m.conversation_id=? and m.id not in (?,?)
+                  and m.created_date between ? and (
+                      select max(u.created_date) from aitls_ai_chat_message_entity u
+                      where u.conversation_id=? and u.type_=?
+                  )
                 for share of m
                 """, rs -> {
                     List<UUID> duplicates = new ArrayList<>();
@@ -211,7 +214,7 @@ public class ScheduleConversationConfirmationService {
                     }
                     return Optional.of(duplicates);
                 }, USER.getId(), ownership.username(), assistant.getCreatedDate(), assistant.getId(), revision,
-                conversationId, assistant.getId(), user.getId(), assistant.getCreatedDate(), user.getCreatedDate(), USER.getId());
+                conversationId, assistant.getId(), user.getId(), assistant.getCreatedDate(), conversationId, USER.getId());
     }
 
     private void retire(UUID conversationId) {

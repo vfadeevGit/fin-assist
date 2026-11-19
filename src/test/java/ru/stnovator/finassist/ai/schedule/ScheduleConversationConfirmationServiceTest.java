@@ -187,6 +187,20 @@ class ScheduleConversationConfirmationServiceTest {
         fixtures.assertRows(fixtures.items(Kind.PAYMENT, fixtures.fixture.payment.getId(), false));
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+    void assistantQuestionBetweenDistinctAffirmativesBreaksConsent(boolean earlierFirst) {
+        var p = fixtures.preview(Kind.PAYMENT, Mode.FILL);
+        UUID proposal = publish(p);
+        UUID first = reply(proposal, p.revision(), "Да");
+        message(ASSISTANT, "Вы имели в виду первый лист?");
+        UUID last = reply(proposal, p.revision(), "Да");
+        assertThat(service.handleReply(fixtures.conversation, earlierFirst ? first : last).outcome()).isEqualTo(STALE);
+        assertThat(service.handleReply(fixtures.conversation, earlierFirst ? last : first).outcome()).isEqualTo(STALE);
+        fixtures.assertPending(p);
+        assertThat(fixtures.items(Kind.PAYMENT, fixtures.fixture.payment.getId(), false)).isEmpty();
+    }
+
     @Test void discussionBetweenTwoAffirmativesRequiresFreshProposal() {
         var p = fixtures.preview(Kind.PAYMENT, Mode.FILL);
         UUID proposal = publish(p);
