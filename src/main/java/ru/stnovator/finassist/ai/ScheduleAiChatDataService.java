@@ -53,10 +53,29 @@ public class ScheduleAiChatDataService extends AiChatDataService {
     protected @Nullable String process(UUID userId, @Nullable Consumer<AiToolStatusUpdate> callback) {
         var user = loadUserMessage(userId);
         var conversation = user.getConversation();
-        var outcome = handleConfirmation(conversation.getId(), userId);
+        ScheduleConversationConfirmationService.ReplyOutcome outcome;
+        try {
+            outcome = confirmations.handleReply(conversation.getId(), userId);
+        } catch (ScheduleConversationConfirmationService.ConsumedHistoryChange changed) {
+            try {
+                return transactions.execute(tx -> recover(user, changed.proposal()));
+            } catch (ConcurrentModificationException | io.jmix.core.security.AccessDeniedException unavailable) {
+                outcome = stale();
+            }
+        } catch (ConcurrentModificationException | IllegalArgumentException | io.jmix.core.security.AccessDeniedException unavailable) {
+            outcome = stale();
+        }
         switch (outcome.outcome()) {
             case APPLIED, DECLINED, STALE -> {
-                return transactions.execute(tx -> persistOutcome(user, outcome));
+                var reply = outcome;
+                return transactions.execute(tx -> persistOutcome(user, reply));
+            }
+            case RECOVERED -> {
+                try {
+                    return transactions.execute(tx -> restoredRecovery(user));
+                } catch (ConcurrentModificationException | IllegalArgumentException | io.jmix.core.security.AccessDeniedException unavailable) {
+                    return presentation.label("stale");
+                }
             }
             case NEEDS_DIALOGUE, NONE -> { /* Continue the native model turn. */ }
         }
@@ -78,13 +97,43 @@ public class ScheduleAiChatDataService extends AiChatDataService {
         }
     }
 
-    private ScheduleConversationConfirmationService.ReplyOutcome handleConfirmation(UUID conversationId, UUID userId) {
-        try {
-            return confirmations.handleReply(conversationId, userId);
-        } catch (ConcurrentModificationException | IllegalArgumentException | io.jmix.core.security.AccessDeniedException stale) {
-            // Domain revalidation runs in W1's transaction. Consent is already spent when it fails.
-            return new ScheduleConversationConfirmationService.ReplyOutcome(ScheduleConversationConfirmationService.Outcome.STALE, null);
+    private ScheduleConversationConfirmationService.ReplyOutcome stale() {
+        return new ScheduleConversationConfirmationService.ReplyOutcome(ScheduleConversationConfirmationService.Outcome.STALE, null);
+    }
+
+    private UUID recoveryId(AiChatMessageEntity user) {
+        return UUID.nameUUIDFromBytes(("schedule-recovery:" + user.getId()).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String restoredRecovery(AiChatMessageEntity user) {
+        var pending = confirmations.pendingProposal(user.getConversation().getId());
+        if (pending.isEmpty() || !pending.get().messageId().equals(recoveryId(user))) return presentation.label("stale");
+        workflow.getPreview(pending.get().operationId(), pending.get().revision());
+        return Objects.requireNonNull(dataManager.load(AiChatMessageEntity.class).id(pending.get().messageId()).one().getContent());
+    }
+
+    private String recover(AiChatMessageEntity user, ScheduleConversationConfirmationService.Proposal consumed) {
+        if (!confirmations.claimRecovery(user.getConversation().getId(), user.getId(), consumed))
+            return persistOutcome(user, stale());
+        var recovery = workflow.refresh(consumed.operationId(), consumed.revision());
+        var assistant = dataManager.create(AiChatMessageEntity.class);
+        assistant.setId(recoveryId(user));
+        assistant.setConversation(user.getConversation());
+        assistant.setType(AiChatMessageEntityType.ASSISTANT);
+        var preview = recovery.preview();
+        if (preview != null && !preview.noChanges()) {
+            var draft = store.load(preview.operationId());
+            String response = presentation.afterHistoryChange(proposalText(draft, preview));
+            assistant.setContent(response);
+            dataManager.saveWithoutReload(assistant);
+            confirmations.publishProposal(preview.operationId(), preview.revision(), assistant.getId());
+            return response;
         }
+        if (preview != null) store.finishUnchanged(preview.operationId(), preview.revision());
+        String response = presentation.afterHistoryChange(presentation.label(preview == null ? recovery.correctionPrompt() : "noChanges"));
+        assistant.setContent(response);
+        dataManager.saveWithoutReload(assistant);
+        return response;
     }
 
     private String publish(AiChatMessageEntity assistant, ScheduleChatContext.PreviewOutput.Candidate candidate, AiChatMessageEntity user) {
@@ -106,14 +155,19 @@ public class ScheduleAiChatDataService extends AiChatDataService {
             return response;
         }
         var verified = workflow.getPreview(draft.operationId(), draft.revision());
-        var content = draft.content();
-        String source = content.source() == null ? presentation.label("messageSource")
-                : attachments.boundFileName(content.source(), draft.conversationId(), content.sourceMessageId());
-        if (content.mapping() != null) source += " · " + content.mapping().sheetKey();
-        String proposal = presentation.render(verified, source);
+        String proposal = proposalText(draft, verified);
         saveAssistantResponse(assistant, proposal);
         confirmations.publishProposal(draft.operationId(), draft.revision(), assistant.getId());
         return proposal;
+    }
+
+    private String proposalText(ScheduleImportStore.Draft draft, ScheduleImportPreview verified) {
+        var content = draft.content();
+        String source = content.source() == null ? presentation.label("messageSource")
+                : attachments.boundFileName(content.source(), draft.conversationId(), content.sourceMessageId());
+        if (content.mapping() != null && content.mapping().worksheetCaption() != null)
+            source += " · " + content.mapping().worksheetCaption();
+        return presentation.render(verified, source);
     }
 
     private void lockConversation(UUID conversationId) {

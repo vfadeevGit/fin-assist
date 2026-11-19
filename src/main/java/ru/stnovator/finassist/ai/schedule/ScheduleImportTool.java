@@ -122,11 +122,14 @@ public class ScheduleImportTool implements JmixAiTool {
             if (mapping == null) return attachmentIssues(draft, List.of(new Issue("file", "MAPPING_REQUIRED")));
             parsedMapping = mapping.toMapping();
             try (var input = attachments.open(c.source())) {
-                var rows = reader.read(input, attachment.fileName(), parsedMapping);
+                var mapped = reader.readMapped(input, attachment.fileName(), parsedMapping);
                 // Normalize before changing provenance, so invalid input never advances the draft.
-                var normalized = new ScheduleNormalizer().normalize(rows, parsedMapping.formats());
+                var normalized = new ScheduleNormalizer().normalize(mapped.rows(), parsedMapping.formats());
                 if (!normalized.issues().isEmpty()) return attachmentIssues(draft, normalized.issues());
                 normalizedRows = normalized.rows();
+                parsedMapping = new Mapping(parsedMapping.sheetKey(), parsedMapping.dateColumn(), parsedMapping.amountColumn(),
+                        parsedMapping.firstDataRow(), parsedMapping.excludedRows(), parsedMapping.formats(),
+                        parsedMapping.csvOptions(), mapped.worksheetCaption());
             }
         } catch (TableReadException e) {
             return attachmentIssues(draft, e.issues());

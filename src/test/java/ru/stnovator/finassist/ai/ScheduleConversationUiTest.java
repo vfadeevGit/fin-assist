@@ -523,8 +523,9 @@ class ScheduleConversationUiTest {
         auth.runWithUser("admin", () -> {
             var chat = conversations.create();
             try {
+                var presentation = new ScheduleProposalText(messages);
                 var proposal = chatMessages.createMessage(chat, AiChatMessageType.ASSISTANT,
-                        new ScheduleProposalText(messages).render(preview, "Январь <img src=x onerror=alert(1)>.xls"));
+                        presentation.afterHistoryChange(presentation.render(preview, "Январь <img src=x onerror=alert(1)>.xls")));
                 for (int visit = 0; visit < 2; visit++) {
                     navigators.view(UiTestUtils.getCurrentView(), AiChatHubView.class).navigate();
                     navigators.view(UiTestUtils.getCurrentView(), AiChatView.class)
@@ -542,7 +543,8 @@ class ScheduleConversationUiTest {
                                 .filter(com.vaadin.flow.component.markdown.Markdown.class::isInstance)
                                 .map(com.vaadin.flow.component.markdown.Markdown.class::cast).findFirst().orElseThrow();
                         var content = markdown.getContent();
-                        assertThat(content).contains("Contract", "Only project", "Январь &#60;img src&#61;x", "1851.00")
+                        assertThat(content).startsWith("После предпросмотра данные изменились.")
+                                .contains("Contract", "Only project", "Январь &#60;img src&#61;x", "1851.00")
                                 .doesNotContain("<img", "onerror=")
                                 .contains("class=\"schedule-proposal-table\" role=\"region\" tabindex=\"0\" aria-label=\"Полный график\"",
                                         "class=\"schedule-proposal-table\" role=\"region\" tabindex=\"0\" aria-label=\"Изменения\"")

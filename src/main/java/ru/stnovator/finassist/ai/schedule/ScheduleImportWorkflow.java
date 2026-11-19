@@ -145,8 +145,33 @@ public class ScheduleImportWorkflow {
         Draft draft = store.draft(store.lockForCommit(operationId, previewRevision));
         Prepared prepared = prepare(content(draft));
         if (prepared.noChanges() || !Objects.equals(prepared.fingerprint(), draft.content().fingerprint()))
-            throw new ConcurrentModificationException("Schedule history changed; request a new preview");
+            throw new HistoryChanged();
         return result(draft, prepared);
+    }
+
+    static final class HistoryChanged extends ConcurrentModificationException {
+        HistoryChanged() { super("Schedule history changed; request a new preview"); }
+    }
+
+    static final class HistoryCorrection extends IllegalArgumentException {
+        final String prompt;
+        HistoryCorrection(String message, String prompt) { super(message); this.prompt = prompt; }
+    }
+
+    public record Recovery(ScheduleImportPreview preview, String correctionPrompt) {}
+
+    /** Revalidate the consumed proposal without granting authority to write its replacement. */
+    public Recovery refresh(UUID operationId, long revision) {
+        var draft = current(operationId, revision);
+        var c = content(draft);
+        try {
+            return new Recovery(preview(operationId, revision, c.mode(), c.addendumNumber(), c.effectiveDate()), null);
+        } catch (HistoryCorrection invalid) {
+            boolean changeMode = invalid.prompt.startsWith("choose");
+            store.update(operationId, revision, new DraftContent(c.kind(), c.source(), c.sourceMessageId(),
+                    c.mapping(), c.rows(), c.contractId(), c.projectId(), changeMode ? null : c.mode(), null, null, null));
+            return new Recovery(null, invalid.prompt);
+        }
     }
 
     private record Context(Contract contract, Project project) {}
@@ -160,17 +185,33 @@ public class ScheduleImportWorkflow {
                 r.date() == null ? null : r.date().toString(), r.amount() == null ? null : r.amount().toPlainString(), "draft")).toList(), null);
         if (!normalized.issues().isEmpty()) throw new IllegalArgumentException("Invalid draft rows");
         var snapshot = schedules.load(c.projectId(), c.kind(), null);
-        if (c.mode() == null || !modes(snapshot).contains(c.mode())) throw new IllegalArgumentException("Schedule mode is unavailable");
+        var available = modes(snapshot);
+        if (c.mode() == null || !available.contains(c.mode())) {
+            var permitted = EnumSet.noneOf(Mode.class);
+            for (var choice : available) {
+                var alternative = new DraftContent(c.kind(), c.source(), c.sourceMessageId(), c.mapping(), c.rows(),
+                        c.contractId(), c.projectId(), choice, c.addendumNumber(), c.effectiveDate(), null);
+                try {
+                    requireWrites(alternative, context, snapshot, normalized.rows());
+                    permitted.add(choice);
+                } catch (AccessDeniedException denied) {
+                    // Only present choices the user can act on.
+                }
+            }
+            if (permitted.isEmpty()) throw unavailable();
+            throw new HistoryCorrection("Schedule mode is unavailable",
+                    permitted.size() > 1 ? "chooseReplaceOrAddendum" : "choose" + permitted.iterator().next());
+        }
         List<Addendum> addenda = completeAddenda(c.contractId());
+        requireWrites(c, context, snapshot, normalized.rows());
         if (c.mode() == Mode.ADDENDUM) {
             if (c.addendumNumber() == null || c.addendumNumber().isBlank() || c.addendumNumber().length() > 50 || c.effectiveDate() == null)
                 throw new IllegalArgumentException("Addendum number (up to 50 characters) and effective date are required");
             if (snapshot.latestCorrectionDate() != null && !c.effectiveDate().isAfter(snapshot.latestCorrectionDate()))
-                throw new IllegalArgumentException("Effective date must follow every correction");
+                throw new HistoryCorrection("Effective date must follow every correction", "laterDate");
             if (addenda.stream().anyMatch(a -> a.getNumber().equals(c.addendumNumber()) || a.getEffectiveDate().equals(c.effectiveDate())))
-                throw new IllegalArgumentException("Addendum number or effective date already exists for this contract");
+                throw new HistoryCorrection("Addendum number or effective date already exists for this contract", "uniqueDocument");
         }
-        requireWrites(c, context, snapshot, normalized.rows());
         var comparison = normalizer.compare(snapshot.rows(), normalized.rows());
         boolean unchanged = comparison.rows().stream().noneMatch(ru.stnovator.finassist.service.ScheduleComparison.Row::changed);
         List<String> tokens = new ArrayList<>();

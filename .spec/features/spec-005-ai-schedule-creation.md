@@ -380,3 +380,23 @@ Financial prompt теперь требует сохранять написани
 `ScheduleConversationAcceptanceTest` провёл ранее отправленный CSV с графиком отгрузок через инструменты модели, сохранённое предложение, реальное сообщение согласия и повторную обработку согласия. Проверены единственная квитанция, полный снимок корректировки и два отчёта до даты вступления ДС в силу и на эту дату. Отказы, устаревшие и параллельные ответы, доступ к вложениям и остальные режимы проверяются в профильных наборах тестов.
 
 На коммите `6478599` выполнен `./gradlew clean test` с временным init-скриптом (куча тестового процесса 1600 МБ, кеш Spring TestContext до трёх контекстов). Результат JUnit XML — 470 тестов в 47 наборах, без ошибок, падений и пропусков. При первом запуске со стандартными настройками тестов процесс исчерпал память. Браузер использовал локальную детерминированную модель; качество ответов внешнего провайдера отдельно не оценивалось.
+
+Для воспроизведения полной проверки на одноразовой базе PostgreSQL создайте `/tmp/finassist-test-heap.gradle`:
+
+```groovy
+allprojects {
+    tasks.withType(Test).configureEach {
+        maxHeapSize = '1600m'
+        systemProperty 'spring.test.context.cache.maxSize', '3'
+    }
+}
+```
+
+Из корня проекта при запущенной тестовой БД:
+
+```sh
+MAIN_DATASOURCE_URL=jdbc:postgresql://127.0.0.1:55439/finassist_import_test \
+MAIN_DATASOURCE_USERNAME=finassist_test MAIN_DATASOURCE_PASSWORD='' \
+OPENAI_API_KEY=test-key OPENAI_MODEL=test-model OPENAI_BASE_URL=http://127.0.0.1:1 \
+./gradlew -I /tmp/finassist-test-heap.gradle clean test
+```

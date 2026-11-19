@@ -162,9 +162,9 @@ public class ScheduleAttachmentService {
     }
     @Transactional(readOnly = true)
     public String boundFileName(UUID attachmentId,UUID conversationId,UUID userMessageId) {
-        var file=boundMetadata(attachmentId,conversationId,userMessageId);
-        if (!file.available()) throw new IllegalStateException("File is unavailable");
-        return file.fileName();
+        var attachment = readOwned(attachmentId);
+        verifySubmission(attachment, conversationId, userMessageId);
+        return attachment.getFileName();
     }
     private boolean available(AiScheduleAttachment attachment) {
         if (attachment.getFileDeletedAt()!=null || attachment.getRemovalRequestedAt()!=null) return false;

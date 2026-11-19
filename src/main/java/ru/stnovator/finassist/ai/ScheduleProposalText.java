@@ -21,6 +21,10 @@ public class ScheduleProposalText {
         return messages.getMessage("ru.stnovator.finassist.ai.view/scheduleImport." + key);
     }
 
+    String afterHistoryChange(String response) {
+        return label("historyChanged") + "\n\n" + response;
+    }
+
     String action(ScheduleImportTypes.Mode mode) {
         return label("proposed" + mode);
     }

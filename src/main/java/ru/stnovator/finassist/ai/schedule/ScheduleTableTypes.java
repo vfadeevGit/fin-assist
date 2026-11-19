@@ -22,7 +22,11 @@ public final class ScheduleTableTypes {
     }
     /** firstDataRow confirms prefix header labels; exclusions may reference their repeats or recognizable headers/totals. */
     public record Mapping(String sheetKey, int dateColumn, int amountColumn, int firstDataRow,
-                          Set<Integer> excludedRows, ParseOptions formats, CsvOptions csvOptions) {
+                          Set<Integer> excludedRows, ParseOptions formats, CsvOptions csvOptions, String worksheetCaption) {
+        public Mapping(String sheetKey, int dateColumn, int amountColumn, int firstDataRow,
+                       Set<Integer> excludedRows, ParseOptions formats, CsvOptions csvOptions) {
+            this(sheetKey, dateColumn, amountColumn, firstDataRow, excludedRows, formats, csvOptions, null);
+        }
         public Mapping { excludedRows = excludedRows == null ? Set.of() : Set.copyOf(excludedRows); }
         public Mapping(String sheetKey, int dateColumn, int amountColumn, int firstDataRow,
                        Set<Integer> excludedRows, ParseOptions formats) {

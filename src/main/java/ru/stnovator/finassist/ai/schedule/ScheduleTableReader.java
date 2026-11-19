@@ -76,6 +76,12 @@ public class ScheduleTableReader {
     }
 
     public List<InputRow> read(InputStream input, String fileName, Mapping mapping) {
+        return readMapped(input, fileName, mapping).rows();
+    }
+
+    record MappedRows(List<InputRow> rows, String worksheetCaption) {}
+
+    MappedRows readMapped(InputStream input, String fileName, Mapping mapping) {
         validateMapping(mapping);
         Table table = load(input, fileName, mapping.csvOptions());
         Grid grid = table.sheets().stream().filter(sheet -> sheet.key().equals(mapping.sheetKey()))
@@ -112,7 +118,7 @@ public class ScheduleTableReader {
         }
         if (!issues.isEmpty()) throw new TableReadException(issues);
         if (result.isEmpty()) throw failure(grid.key(), "NO_DATA_ROWS");
-        return List.copyOf(result);
+        return new MappedRows(List.copyOf(result), table.csvOptions() == null ? grid.name() : null);
     }
 
     private Table load(InputStream input, String name, CsvOptions csvOptions) {

@@ -31,7 +31,7 @@ import static io.jmix.aitoolsflowuidata.entity.AiChatMessageEntityType.*;
 @Service
 @Transactional
 public class ScheduleConversationConfirmationService {
-    public enum Outcome { APPLIED, DECLINED, NEEDS_DIALOGUE, STALE, NONE }
+    public enum Outcome { APPLIED, DECLINED, NEEDS_DIALOGUE, STALE, RECOVERED, NONE }
     public record ReplyOutcome(Outcome outcome, ScheduleImportCommitService.CommitResult result) {
         ReplyOutcome(Outcome outcome) { this(outcome, null); }
     }
@@ -181,7 +181,35 @@ public class ScheduleConversationConfirmationService {
         Integer consumed = reserveConsent.execute(tx -> jdbc.update(
                 "update ai_schedule_proposal set pending=false where message_id=? and pending", proposal.messageId()));
         if (!Integer.valueOf(1).equals(consumed)) return new ReplyOutcome(Outcome.STALE);
-        return new ReplyOutcome(Outcome.APPLIED, commits.confirm(proposal.operationId(), proposal.revision()));
+        try {
+            return new ReplyOutcome(Outcome.APPLIED, commits.confirm(proposal.operationId(), proposal.revision()));
+        } catch (ScheduleImportWorkflow.HistoryChanged | ScheduleImportWorkflow.HistoryCorrection changed) {
+            throw new ConsumedHistoryChange(proposal, changed);
+        }
+    }
+
+    public static final class ConsumedHistoryChange extends ConcurrentModificationException {
+        private final Proposal proposal;
+        ConsumedHistoryChange(Proposal proposal, RuntimeException cause) {
+            super(cause);
+            this.proposal = proposal;
+        }
+        public Proposal proposal() { return proposal; }
+    }
+
+    /** Claim recovery in the same transaction that publishes it, after the failed write rolled back. */
+    public boolean claimRecovery(UUID conversationId, UUID userId, Proposal proposal) {
+        lockConversation(conversationId);
+        var user = message(conversationId, userId, USER);
+        if (pending(conversationId).isPresent() || !matchesDraft(proposal)) return false;
+        return jdbc.update("""
+                update ai_schedule_reply set outcome='RECOVERED'
+                where message_id=? and proposal_id=? and revision=? and outcome is null
+                and submitted_digest=sha256(convert_to(?, 'UTF8'))
+                and not exists(select 1 from aitls_ai_chat_message_entity
+                    where conversation_id=? and type_=? and (created_date,id)>(?,?))
+                """, userId, proposal.messageId(), proposal.revision(), user.getContent(),
+                conversationId, USER.getId(), user.getCreatedDate(), userId) == 1;
     }
 
     private boolean matchesDraft(Proposal p) {

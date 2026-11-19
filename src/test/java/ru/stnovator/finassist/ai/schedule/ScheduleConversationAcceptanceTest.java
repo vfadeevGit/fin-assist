@@ -18,6 +18,9 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
 import ru.stnovator.finassist.ai.ScheduleAiChatDataService;
 import ru.stnovator.finassist.entity.AiScheduleAttachment;
+import ru.stnovator.finassist.entity.Addendum;
+import ru.stnovator.finassist.entity.User;
+import ru.stnovator.finassist.test_support.DashboardFixtures;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.io.ByteArrayInputStream;
@@ -42,6 +45,7 @@ class ScheduleConversationAcceptanceTest {
     final JsonMapper json = JsonMapper.builder().build();
     Object previousClient;
     UUID file;
+    String sheetKey = "csv";
 
     @BeforeEach void setup() {
         context.getAutowireCapableBeanFactory().autowireBean(domain);
@@ -58,7 +62,8 @@ class ScheduleConversationAcceptanceTest {
                         .list().forEach(domain.internal::remove);
                 var attachment = domain.internal.load(AiScheduleAttachment.class).id(file).one();
                 var ref = attachment.getFileRef();
-                storage.getByName(ref.getStorageName()).removeFile(ref);
+                if (storage.getByName(ref.getStorageName()).fileExists(ref))
+                    storage.getByName(ref.getStorageName()).removeFile(ref);
                 domain.internal.remove(attachment);
             }
         } finally {
@@ -91,6 +96,7 @@ class ScheduleConversationAcceptanceTest {
         confirmations.captureObservation(domain.conversation, yes, pending.messageId(), pending.revision());
         String receipt = process(yes);
         var committed = domain.counts();
+        assertThat(committed.get(2)).isEqualTo(before.get(2) + 1);
         assertThat(process(yes)).isEqualTo(receipt).contains("Сохранено", "180");
         assertThat(calls.get()).isEqualTo(6);
         assertThat(domain.counts()).isEqualTo(committed);
@@ -104,6 +110,98 @@ class ScheduleConversationAcceptanceTest {
                 row("2028-07-01", "80.00")), null, null, false);
         domain.assertReports(date, payment, List.of(row("2028-06-01", "70.00"),
                 row("2028-08-01", "110.00")), null, id, false);
+    }
+
+    @Test void changedHistoryRequiresAnotherObservedConsent() {
+        var pending = shipmentProposal();
+        domain.fixture.shipment(LocalDate.parse("2028-07-10"), "37");
+        var before = domain.counts();
+        var yes = user("Да, применить");
+        confirmations.captureObservation(domain.conversation, yes, pending.messageId(), pending.revision());
+        String refreshed = process(yes);
+        assertThat(org.jsoup.parser.Parser.unescapeEntities(refreshed, false)).contains("2028-07-10", "37", "ACCEPT-S");
+        assertThat(domain.counts()).isEqualTo(before);
+        var updated = confirmations.pendingProposal(domain.conversation).orElseThrow();
+        assertThat(updated.revision()).isGreaterThan(pending.revision());
+        assertThat(process(yes)).isEqualTo(refreshed);
+        assertThat(confirmations.pendingProposal(domain.conversation)).contains(updated);
+        authenticateAsOwner(yes, "ROLE_commit-readonly-amount");
+        assertThat(process(yes)).contains("Предпросмотр недоступен").doesNotContain("2028");
+        authenticateAsOwner(yes, "ROLE_finance-manager-role");
+        var second = user("Да, применить");
+        confirmations.captureObservation(domain.conversation, second, updated.messageId(), updated.revision());
+        assertThat(process(second)).contains("Сохранено");
+        assertThat(domain.counts().get(2)).isEqualTo(before.get(2) + 1);
+    }
+
+    @Test void conflictingAddendumRequiresNewMetadata() {
+        var pending = shipmentProposal();
+        var conflict = domain.data.create(Addendum.class);
+        conflict.setContract(domain.fixture.contract);
+        conflict.setNumber("ACCEPT-S");
+        conflict.setEffectiveDate(LocalDate.parse("2028-03-19"));
+        domain.fixture.save(conflict);
+        var before = domain.counts();
+        var yes = user("Да, применить");
+        confirmations.captureObservation(domain.conversation, yes, pending.messageId(), pending.revision());
+        assertThat(process(yes)).contains("Укажите свободные номер и дату");
+        assertThat(confirmations.pendingProposal(domain.conversation)).isEmpty();
+        assertThat(domain.counts()).isEqualTo(before);
+    }
+
+    @Test void revokedWritePermissionReturnsRedactedReply() {
+        var pending = shipmentProposal();
+        var before = domain.counts();
+        var yes = user("Да, применить");
+        confirmations.captureObservation(domain.conversation, yes, pending.messageId(), pending.revision());
+        authenticateAsOwner(yes, "ROLE_commit-readonly-amount");
+        assertThat(process(yes)).contains("Предпросмотр недоступен").doesNotContain("ACCEPT", "2028", "shipment");
+        assertThat(confirmations.pendingProposal(domain.conversation)).isEmpty();
+        assertThat(domain.counts()).isEqualTo(before);
+    }
+
+    @Test void verifiedWorksheetCaptionSurvivesLossOfOriginal() throws Exception {
+        var source = user("Файл Excel");
+        sheetKey = "sheet:0";
+        try (var workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook();
+             var bytes = new java.io.ByteArrayOutputStream()) {
+            var sheet = workbook.createSheet("Отгрузки");
+            var header = sheet.createRow(0);
+            header.createCell(0).setCellValue("Дата");
+            header.createCell(1).setCellValue("Сумма");
+            var row = sheet.createRow(1);
+            row.createCell(0).setCellValue("2028-08-01");
+            row.createCell(1).setCellValue(110);
+            workbook.write(bytes);
+            file = attachments.stage(domain.conversation, "shipment.xlsx", new ByteArrayInputStream(bytes.toByteArray()));
+        }
+        attachments.bindToMessage(file, source);
+        installScriptedModel();
+        assertThat(process(user("Подготовь график"))).contains("Отгрузки").doesNotContain("sheet:0");
+        var pending = confirmations.pendingProposal(domain.conversation).orElseThrow();
+        var ref = domain.internal.load(AiScheduleAttachment.class).id(file).one().getFileRef();
+        storage.getByName(ref.getStorageName()).removeFile(ref);
+        domain.fixture.shipment(LocalDate.parse("2028-07-10"), "37");
+        var yes = user("Да, применить");
+        confirmations.captureObservation(domain.conversation, yes, pending.messageId(), pending.revision());
+        assertThat(process(yes)).contains("Отгрузки", "2028-07-10");
+    }
+
+    private void authenticateAsOwner(UUID message, String role) {
+        var owner = domain.internal.create(User.class);
+        owner.setUsername(domain.internal.load(AiChatMessageEntity.class).id(message).one().getCreatedBy());
+        DashboardFixtures.authenticate(owner, role);
+    }
+
+    private ScheduleConversationConfirmationService.Proposal shipmentProposal() {
+        var source = user("Файл");
+        file = attachments.stage(domain.conversation, "shipment.csv", new ByteArrayInputStream(
+                "Дата;Сумма\n2028-08-01;110\n".getBytes(StandardCharsets.UTF_8)));
+        attachments.bindToMessage(file, source);
+        installScriptedModel();
+        var proposal = process(user("Подготовь график отгрузок"));
+        assertThat(proposal).doesNotContain(" · csv");
+        return confirmations.pendingProposal(domain.conversation).orElseThrow();
     }
 
     private AtomicInteger installScriptedModel() {
@@ -126,7 +224,7 @@ class ScheduleConversationAcceptanceTest {
             String tool = switch (step) {
                 case 0 -> { args.put("kind", "SHIPMENT"); yield "startScheduleImport"; }
                 case 1 -> { args.put("attachmentId", file); yield "selectScheduleAttachment"; }
-                case 2 -> { args.put("mapping", new ScheduleTableTypes.Mapping("csv", 0, 1, 1, Set.of(), null));
+                case 2 -> { args.put("mapping", new ScheduleTableTypes.Mapping(sheetKey, 0, 1, 1, Set.of(), null));
                     yield "applyScheduleMapping"; }
                 case 3 -> { args.put("contractId", domain.fixture.contract.getId()); yield "selectScheduleContract"; }
                 case 4 -> { args.put("mode", "ADDENDUM"); args.put("number", "ACCEPT-S");

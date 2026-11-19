@@ -174,7 +174,10 @@ public class ScheduleImportStore {
                     || (attachment.getSourceMessageId()==null && request!=null))
                 throw new SecurityException("Attachment is unavailable for this submission");
             if (request!=null) attachments.submittedSource(attachment,conversationId,request);
-            attachments.requireAvailable(attachment);
+            boolean usesRecognizedRows = prior != null && prior.mapping() != null && !prior.rows().isEmpty()
+                    && Objects.equals(prior.source(), content.source()) && Objects.equals(prior.mapping(), content.mapping())
+                    && prior.rows().equals(content.rows());
+            if (!usesRecognizedRows) attachments.requireAvailable(attachment);
         }
         entity.setAttachment(attachment);
         return updateContent(entity,content,request,prior);
