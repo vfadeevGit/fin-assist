@@ -5,6 +5,7 @@ import com.vaadin.flow.component.ComponentUtil;
 import com.vaadin.flow.component.upload.StartedEvent;
 import com.vaadin.flow.component.upload.FinishedEvent;
 import com.vaadin.flow.component.upload.FailedEvent;
+import io.jmix.aitoolsflowui.model.AiChatMessageType;
 import io.jmix.aitoolsflowui.service.AiConversationService;
 import io.jmix.aitoolsflowui.service.AiChatMessageService;
 import io.jmix.aitoolsflowui.view.chat.AiChatView;
@@ -72,6 +73,8 @@ class ScheduleImportUiTest {
     ScheduleImportTool tool;
     @MockitoBean
     ScheduleImportCommitService commit;
+    @MockitoBean
+    ScheduleConversationConfirmationService confirmations;
     @MockitoBean
     EntityLinksTool links;
     final UUID conversation = UUID.randomUUID(), operation = UUID.randomUUID();
@@ -324,6 +327,33 @@ class ScheduleImportUiTest {
     }
 
     @Test
+    void staleTabAndItsRetryCaptureOnlyTheDisplayedProposal() {
+        auth.runWithUser("admin", () -> {
+            var chat = conversations.create();
+            try {
+                var first = chatMessages.createMessage(chat, AiChatMessageType.ASSISTANT, "Первое предложение");
+                var displayed = new ScheduleConversationConfirmationService.Proposal(first.getId(), operation, 7, "first");
+                when(confirmations.pendingProposal(chat.getId())).thenReturn(Optional.of(displayed));
+                navigators.view(UiTestUtils.getCurrentView(), AiChatView.class)
+                        .withRouteParameters(new com.vaadin.flow.router.RouteParameters("id", chat.getId().toString())).navigate();
+                var fragment = (ScheduleAiChatFragment) UiTestUtils.getComponent(UiTestUtils.getCurrentView(), "chatFragment");
+                var newer = chatMessages.createMessage(chat, AiChatMessageType.ASSISTANT, "Второе предложение");
+                when(confirmations.pendingProposal(chat.getId())).thenReturn(Optional.of(
+                        new ScheduleConversationConfirmationService.Proposal(newer.getId(), operation, 8, "second")));
+                doAnswer(i -> { ((Runnable) i.getArgument(5)).run(); return null; })
+                        .when(coordinator).run(any(), any(), any(), any(), any(), any());
+                fragment.sendMessage("Да");
+                var actual = chatMessages.loadMessages(chat).stream().filter(m -> m.getType() == AiChatMessageType.USER)
+                        .findFirst().orElseThrow();
+                fragment.getRetryButton().click();
+                verify(confirmations, times(2)).captureObservation(chat.getId(), actual.getId(), first.getId(), 7L);
+            } finally {
+                conversations.remove(chat);
+            }
+        });
+    }
+
+    @Test
     void directChatFailureRetriesSamePersistedUserWithoutDuplicateSubmission() {
         auth.runWithUser("admin", () -> {
             var chat = conversations.create();
@@ -340,7 +370,6 @@ class ScheduleImportUiTest {
                 fragment.sendMessage("Prepare shipment schedule");
                 var actual = chatMessages.loadMessages(chat).stream().findFirst().orElseThrow();
                 Button retry = fragment.getRetryButton();
-                assertThat(fragment.getImportPanel()).isNotNull();
                 retry.click();
                 assertThat(chatMessages.loadMessages(chat)).hasSize(1);
                 verify(coordinator, times(2)).run(any(), any(), argThat(m -> m.getId().equals(actual.getId())), any(), any(), any());

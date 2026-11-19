@@ -1,6 +1,10 @@
 package ru.stnovator.finassist.ai.view;
 
+import com.vaadin.flow.component.Component;
+import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.html.Span;
+import ru.stnovator.finassist.ai.EntityLinksTool;
+import ru.stnovator.finassist.ai.schedule.ScheduleImportStore;
 import io.jmix.aitoolsflowui.view.chat.renderer.TimelineItemRenderer;
 import io.jmix.aitoolsflowui.view.chat.timeline.TimelineItem;
 import io.jmix.aitoolsflowui.view.chat.timeline.TimelineItemType;
@@ -17,16 +21,32 @@ import java.util.List;
 public class ScheduleTimelineItemRenderer extends TimelineItemRenderer {
     @Autowired
     private ScheduleAttachmentService attachments;
-    private final List<Span> attachmentBadges = new ArrayList<>();
+    @Autowired
+    private ScheduleImportStore store;
+    @Autowired
+    private EntityLinksTool links;
+    private final List<Component> decorations = new ArrayList<>();
 
     @Override
     public void setItem(@Nullable TimelineItem item) {
-        attachmentBadges.forEach(badge -> getContent().remove(badge));
-        attachmentBadges.clear();
+        decorations.forEach(badge -> getContent().remove(badge));
+        decorations.clear();
         super.setItem(item);
-        if (item == null || item.getType() != TimelineItemType.USER || item.getMessage() == null
-                || item.getMessage().getConversation() == null) return;
+        if (item == null || item.getMessage() == null || item.getMessage().getConversation() == null) return;
         var message = item.getMessage();
+        if (item.getType() == TimelineItemType.ASSISTANT) {
+            store.receiptForMessage(message.getConversation().getId(), message.getId()).ifPresent(receipt -> {
+                var link = links.getEntityLinks(receipt.entityName(), List.of(receipt.resultId().toString()))
+                        .stream().filter(EntityLinksTool.Link::available).findFirst();
+                String group = "ru.stnovator.finassist.ai.view";
+                Component destination = link.<Component>map(l -> new Anchor(l.url(), messages.getMessage(group, "scheduleImport.openResult")))
+                        .orElseGet(() -> new Span(messages.getMessage(group, "scheduleImport.resultUnavailable")));
+                decorations.add(destination);
+                getContent().add(destination);
+            });
+            return;
+        }
+        if (item.getType() != TimelineItemType.USER) return;
         for (var attachment : attachments.forMessage(message.getConversation().getId(), message.getId())) {
             String group = "ru.stnovator.finassist.ai.view";
             String status = messages.getMessage(group, attachment.available()
@@ -35,7 +55,7 @@ public class ScheduleTimelineItemRenderer extends TimelineItemRenderer {
                     attachment.fileName(), attachment.sizeBytes(), status));
             badge.addClassName("schedule-sent-attachment");
             badge.getElement().setAttribute("data-source-message-id", message.getId().toString());
-            attachmentBadges.add(badge);
+            decorations.add(badge);
             getContent().add(badge);
         }
     }

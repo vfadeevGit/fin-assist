@@ -20,7 +20,12 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import ru.stnovator.finassist.FinAssistApplication;
 import ru.stnovator.finassist.ai.schedule.*;
-import ru.stnovator.finassist.ai.view.ScheduleImportPanel;
+import io.jmix.aitoolsflowui.model.AiChatMessageType;
+import io.jmix.aitoolsflowui.service.AiChatMessageService;
+import io.jmix.aitoolsflowui.service.AiConversationService;
+import io.jmix.aitoolsflowui.view.chat.support.TimelineItemFactory;
+import io.jmix.aitoolsflowui.view.chat.renderer.TimelineItemRenderer;
+import io.jmix.flowui.Fragments;
 import ru.stnovator.finassist.entity.*;
 import ru.stnovator.finassist.test_support.DashboardFixtures;
 import ru.stnovator.finassist.test_support.RelatedFixtures;
@@ -43,11 +48,13 @@ class ScheduleImportResultUiTest {
     @Autowired SystemAuthenticator auth;
     @Autowired ScheduleImportStore store;
     @Autowired ScheduleImportWorkflow workflow;
-    @Autowired ScheduleImportTool tool;
-    @Autowired ScheduleImportCommitService commit;
-    @Autowired EntityLinksTool links;
-    @Autowired Messages messages;
-    @Autowired ScheduleAttachmentService attachments;
+    @Autowired ScheduleAiChatDataService chat;
+    @Autowired ScheduleConversationConfirmationService confirmations;
+    @Autowired AiConversationService conversations;
+    @Autowired AiChatMessageService messages;
+    @Autowired ScheduleProposalText presentation;
+    @Autowired Fragments fragments;
+    @Autowired TimelineItemFactory timeline;
     RelatedFixtures fixture;
     User owner;
     UUID conversation;
@@ -90,31 +97,38 @@ class ScheduleImportResultUiTest {
         fixture.close();
     }
 
-    ScheduleImportPanel prepared(Kind kind) {
+    UUID savedReceipt(Kind kind) {
         var draft = workflow.start(conversation, kind);
         draft = workflow.setRows(draft.operationId(), draft.revision(), List.of(
                 new InputRow("2026-12-01", "1200.10", "1"),
                 new InputRow("2026-12-02", "34.46", "2")), null);
         workflow.selectContract(draft.operationId(), draft.revision(), fixture.contract.getId());
         draft = store.load(draft.operationId());
-        workflow.preview(draft.operationId(), draft.revision(), Mode.FILL, null, null);
-        var panel = panel();
-        panel.bind(conversation);
-        assertThat(panel.getConfirmButton().isEnabled()).isTrue();
-        return panel;
+        var preview = workflow.preview(draft.operationId(), draft.revision(), Mode.FILL, null, null);
+        var nativeChat = Objects.requireNonNull(conversations.loadConversation(conversation));
+        var proposal = messages.createMessage(nativeChat, AiChatMessageType.ASSISTANT, presentation.render(preview, "Текст"));
+        confirmations.publishProposal(draft.operationId(), preview.revision(), proposal.getId());
+        var actual = messages.createMessage(nativeChat, AiChatMessageType.USER, "Да");
+        confirmations.captureObservation(conversation, actual.getId(), proposal.getId(), preview.revision());
+        assertThat(chat.processMessage(actual)).contains("Сохранено");
+        return draft.operationId();
     }
 
-    ScheduleImportPanel panel() {
-        return new ScheduleImportPanel(store, workflow, tool, commit, links, messages, attachments, prompt -> {});
+    Component renderReceipt(UUID messageId) {
+        var nativeChat = Objects.requireNonNull(conversations.loadConversation(conversation));
+        var message = messages.loadMessages(nativeChat).stream().filter(m -> m.getId().equals(messageId)).findFirst().orElseThrow();
+        assertThat(message.getContent()).contains("Строк: 2", "1234.56").doesNotContain("](");
+        var renderer = fragments.create(UiTestUtils.getCurrentView(), TimelineItemRenderer.class);
+        renderer.setItem(timeline.createAssistantItem(message));
+        return renderer.getContent();
     }
 
     @ParameterizedTest
     @EnumSource(Kind.class)
     void financeManagerCanFollowSavedBaseScheduleBeforeAndAfterReload(Kind kind) {
-        var panel = prepared(kind);
-        panel.getConfirmButton().click();
-        assertThat(panel.getResult()).isNotNull();
-        UUID resultId = panel.getResult().entityId();
+        UUID receipt = savedReceipt(kind);
+        UUID resultId = store.load(receipt).resultId();
+        var panel = renderReceipt(receipt);
         assertThat(anchors(panel)).singleElement().satisfies(link -> {
             assertThat(link.getHref()).endsWith("/" + resultId);
             UI.getCurrent().navigate(link.getHref().substring(1));
@@ -124,29 +138,23 @@ class ScheduleImportResultUiTest {
                 assertThat(((ShipmentScheduleDetailView) UiTestUtils.getCurrentView()).getEditedEntity().getId()).isEqualTo(resultId);
             }
         });
-        assertSummary(panel, kind);
         changeCurrentAmount(kind);
-        var reloaded = panel();
-        reloaded.bind(conversation);
+        var reloaded = renderReceipt(receipt);
         assertThat(anchors(reloaded)).singleElement().satisfies(link -> assertThat(link.getHref()).endsWith("/" + resultId));
-        assertSummary(reloaded, kind);
     }
 
     @ParameterizedTest
     @EnumSource(Kind.class)
     void ownedHistoricalReceiptRemainsVisibleAfterDestinationReadIsRevoked(Kind kind) {
-        var panel = prepared(kind);
-        panel.getConfirmButton().click();
-        assertThat(panel.getResult()).isNotNull();
+        UUID receipt = savedReceipt(kind);
+        UUID resultId = store.load(receipt).resultId();
         changeCurrentAmount(kind);
         DashboardFixtures.authenticate(owner, "ROLE_ai-schedule-import");
-        var reloaded = panel();
-        reloaded.bind(conversation);
+        var reloaded = renderReceipt(receipt);
         assertThat(anchors(reloaded)).isEmpty();
         assertThat(reloaded.isVisible()).isTrue();
-        assertSummary(reloaded, kind);
         assertThat(spans(reloaded)).contains("Ссылка на сохранённый результат недоступна");
-        assertThat(spans(reloaded)).allSatisfy(text -> assertThat(text).doesNotContain("999", "related-", panel.getResult().entityId().toString()));
+        assertThat(spans(reloaded)).allSatisfy(text -> assertThat(text).doesNotContain("999", "related-", resultId.toString()));
     }
 
     void changeCurrentAmount(Kind kind) {
@@ -161,12 +169,6 @@ class ScheduleImportResultUiTest {
                 data.saveWithoutReload(item);
             }
         });
-    }
-
-    void assertSummary(ScheduleImportPanel panel, Kind kind) {
-        String caption = kind == Kind.PAYMENT ? "Сохранён график оплат" : "Сохранён график отгрузок";
-        assertThat(spans(panel)).anySatisfy(text -> assertThat(text.replace('\u00a0', ' ').replace('\u202f', ' '))
-                .contains(caption, "Строк: 2", "Итого: 1 234,56"));
     }
 
     static Stream<Component> components(Component root) {

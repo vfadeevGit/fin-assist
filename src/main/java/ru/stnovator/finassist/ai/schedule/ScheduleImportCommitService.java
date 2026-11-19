@@ -128,7 +128,7 @@ public class ScheduleImportCommitService {
         return header;
     }
 
-    private static Class<?> resultType(DraftContent c) {
+    static Class<?> resultType(DraftContent c) {
         if (c.mode() == Mode.ADDENDUM) return Addendum.class;
         return c.kind() == Kind.PAYMENT ? PaymentSchedule.class : ShipmentSchedule.class;
     }

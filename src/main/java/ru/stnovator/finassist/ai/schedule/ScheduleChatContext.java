@@ -13,6 +13,16 @@ import java.util.UUID;
 @Service
 public class ScheduleChatContext {
     public static final String USER_MESSAGE_ID = "finassist_currentUserMessageId";
+    public static final String PREVIEW_OUTPUT = "finassist_previewOutput";
+
+    /** A new instance is attached to each native model call. Only the preview tool writes it. */
+    public static final class PreviewOutput {
+        public record Candidate(UUID operationId, long revision, ScheduleImportTypes.Mode mode, boolean noChanges) {}
+        private Candidate preview;
+        public synchronized void prepared(Candidate value) { preview = value; }
+        public synchronized Candidate get() { return preview; }
+    }
+
     public record Submission(UUID conversationId, UUID userMessageId) {}
     private final UnconstrainedDataManager data;
     private final ScheduleImportOwnership ownership;

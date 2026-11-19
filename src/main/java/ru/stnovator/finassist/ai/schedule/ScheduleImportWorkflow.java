@@ -116,6 +116,18 @@ public class ScheduleImportWorkflow {
         return available;
     }
 
+    /** Complete readable history is needed even when unchanged rows require no new document. */
+    public boolean unchanged(Draft draft, Mode mode) {
+        ownership.conversation(draft.conversationId());
+        var content = content(draft);
+        context(content);
+        var snapshot = schedules.load(content.projectId(), content.kind(), null);
+        if (!modes(snapshot).contains(mode)) throw new IllegalArgumentException("Schedule mode is unavailable");
+        var comparison = normalizer.compare(snapshot.rows(), content.rows());
+        return comparison.status() == ru.stnovator.finassist.service.ScheduleComparison.Status.COMPLETE
+                && comparison.rows().stream().noneMatch(ru.stnovator.finassist.service.ScheduleComparison.Row::changed);
+    }
+
     public ScheduleImportPreview preview(UUID operationId, long revision, Mode mode, String number, LocalDate effectiveDate) {
         Draft draft = current(operationId, revision);
         DraftContent c = content(draft);

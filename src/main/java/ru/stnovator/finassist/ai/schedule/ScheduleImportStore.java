@@ -13,7 +13,7 @@ import static ru.stnovator.finassist.ai.schedule.ScheduleImportTypes.*;
 
 @Service
 public class ScheduleImportStore {
-    public enum Status { COLLECTING, PREVIEW_READY, SAVED, CANCELLED, EXPIRED }
+    public enum Status { COLLECTING, PREVIEW_READY, SAVED, CANCELLED, EXPIRED, NO_CHANGES }
     public record DraftContent(Kind kind, UUID source, UUID sourceMessageId, ScheduleTableTypes.Mapping mapping,
                                List<Row> rows, UUID contractId, UUID projectId, Mode mode,
                                String addendumNumber, LocalDate effectiveDate, String fingerprint,
@@ -59,6 +59,19 @@ public class ScheduleImportStore {
         }
         return draft(entity);
     }
+    public record ReceiptDestination(String entityName, UUID resultId) {}
+
+    /** A committed native assistant receipt uses its operation ID as its message ID. */
+    @Transactional(readOnly = true)
+    public Optional<ReceiptDestination> receiptForMessage(UUID conversationId, UUID assistantMessageId) {
+        ownership.conversation(conversationId);
+        return data.load(AiScheduleImport.class)
+                .query("e.id=:id and e.originalConversationId=:c and e.owner=:owner and e.status=:status")
+                .parameter("id", assistantMessageId).parameter("c", conversationId).parameter("owner", ownership.username())
+                .parameter("status", Status.SAVED.name()).optional().map(this::draft)
+                .map(saved -> new ReceiptDestination(ScheduleImportCommitService.resultType(saved.content()).getSimpleName(), saved.resultId()));
+    }
+
     /** Owned durable receipts, independent of chat history and UI session state. */
     @Transactional(readOnly = true)
     public List<Draft> savedForConversation(UUID conversationId) {
@@ -135,6 +148,12 @@ public class ScheduleImportStore {
     @Transactional
     public void cancel(UUID operationId,long expectedRevision) {
         var entity=editable(operationId,expectedRevision);finish(entity,Status.CANCELLED);data.saveWithoutReload(entity);
+    }
+    @Transactional
+    public void finishUnchanged(UUID operationId, long revision) {
+        var entity = editable(operationId, revision);
+        finish(entity, Status.NO_CHANGES);
+        data.saveWithoutReload(entity);
     }
     /** Trusted workflow boundary. A client cannot set status, revision, or fingerprint through update(). */
     @Transactional

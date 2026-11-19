@@ -14,6 +14,13 @@ import org.jspecify.annotations.Nullable;
 import ru.stnovator.finassist.ai.schedule.*;
 import tools.jackson.databind.json.JsonMapper;
 import java.util.*;
+import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import io.jmix.aitoolsflowuidata.entity.AiConversationEntity;
+import io.jmix.aitoolsflowuidata.entity.AiChatMessageEntityType;
+import jakarta.persistence.LockModeType;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import java.util.function.Consumer;
 
 /** Preserve the framework's prompt, advisors, callbacks, history and assistant-placeholder lifecycle. */
@@ -24,7 +31,132 @@ public class ScheduleAiChatDataService extends AiChatDataService {
     private final ScheduleImportTool imports;
     private final ScheduleAttachmentService attachments;
     private final JsonMapper json=JsonMapper.builder().build();
-    public ScheduleAiChatDataService(ScheduleImportTool imports,ScheduleAttachmentService attachments){this.imports=imports;this.attachments=attachments;}
+    private final ScheduleConversationConfirmationService confirmations;
+    private final ScheduleImportWorkflow workflow;
+    private final ScheduleImportStore store;
+    private final ScheduleProposalText presentation;
+    private final TransactionTemplate transactions;
+
+    public ScheduleAiChatDataService(ScheduleImportTool imports, ScheduleAttachmentService attachments,
+            ScheduleConversationConfirmationService confirmations, ScheduleImportWorkflow workflow,
+            ScheduleImportStore store, ScheduleProposalText presentation, PlatformTransactionManager transactions) {
+        this.imports = imports;
+        this.attachments = attachments;
+        this.confirmations = confirmations;
+        this.workflow = workflow;
+        this.store = store;
+        this.presentation = presentation;
+        this.transactions = new TransactionTemplate(transactions);
+    }
+
+    @Override
+    protected @Nullable String process(UUID userId, @Nullable Consumer<AiToolStatusUpdate> callback) {
+        var user = loadUserMessage(userId);
+        var conversation = user.getConversation();
+        var outcome = handleConfirmation(conversation.getId(), userId);
+        switch (outcome.outcome()) {
+            case APPLIED, DECLINED, STALE -> {
+                return transactions.execute(tx -> persistOutcome(user, outcome));
+            }
+            case NEEDS_DIALOGUE, NONE -> { /* Continue the native model turn. */ }
+        }
+        var history = loadHistory(conversation.getId(), user);
+        var assistant = createAssistantPlaceholder(conversation);
+        try {
+            var output = new ScheduleChatContext.PreviewOutput();
+            String response = buildPromptSpec(history, assistant.getId(), callback)
+                    .toolContext(Map.of(ScheduleChatContext.PREVIEW_OUTPUT, output)).call().content();
+            var preview = output.get();
+            if (preview != null) {
+                return transactions.execute(tx -> publish(assistant, preview, user));
+            }
+            saveAssistantResponse(assistant, response);
+            return response;
+        } catch (RuntimeException failure) {
+            removeAssistantPlaceholderSafely(assistant);
+            throw failure;
+        }
+    }
+
+    private ScheduleConversationConfirmationService.ReplyOutcome handleConfirmation(UUID conversationId, UUID userId) {
+        try {
+            return confirmations.handleReply(conversationId, userId);
+        } catch (ConcurrentModificationException | IllegalArgumentException | io.jmix.core.security.AccessDeniedException stale) {
+            // Domain revalidation runs in W1's transaction. Consent is already spent when it fails.
+            return new ScheduleConversationConfirmationService.ReplyOutcome(ScheduleConversationConfirmationService.Outcome.STALE, null);
+        }
+    }
+
+    private String publish(AiChatMessageEntity assistant, ScheduleChatContext.PreviewOutput.Candidate candidate, AiChatMessageEntity user) {
+        // Order locks the same way as handleReply: conversation, then import.
+        lockConversation(user.getConversation().getId());
+        if (!dataManager.load(AiChatMessageEntity.class)
+                .query("e.conversation.id=:c and e.type=:type and (e.createdDate>:date or (e.createdDate=:date and e.id>:id))")
+                .parameter("c", user.getConversation().getId()).parameter("type", AiChatMessageEntityType.USER.getId())
+                .parameter("date", user.getCreatedDate()).parameter("id", user.getId()).maxResults(1).list().isEmpty())
+            throw new ConcurrentModificationException("A later user message superseded this request");
+        var draft = store.load(candidate.operationId());
+        if (!user.getConversation().getId().equals(draft.conversationId()) || draft.revision() != candidate.revision())
+            throw new ConcurrentModificationException("Preview changed during the response");
+        if (candidate.noChanges()) {
+            if (!workflow.unchanged(draft, candidate.mode())) throw new ConcurrentModificationException("Schedule history changed");
+            store.finishUnchanged(draft.operationId(), draft.revision());
+            String response = presentation.label("noChanges");
+            saveAssistantResponse(assistant, response);
+            return response;
+        }
+        var verified = workflow.getPreview(draft.operationId(), draft.revision());
+        var content = draft.content();
+        String source = content.source() == null ? presentation.label("messageSource")
+                : attachments.boundFileName(content.source(), draft.conversationId(), content.sourceMessageId());
+        if (content.mapping() != null) source += " · " + content.mapping().sheetKey();
+        String proposal = presentation.render(verified, source);
+        saveAssistantResponse(assistant, proposal);
+        confirmations.publishProposal(draft.operationId(), draft.revision(), assistant.getId());
+        return proposal;
+    }
+
+    private void lockConversation(UUID conversationId) {
+        dataManager.load(AiConversationEntity.class).id(conversationId)
+                .lockMode(LockModeType.PESSIMISTIC_WRITE).one();
+    }
+
+    private String persistOutcome(AiChatMessageEntity user, ScheduleConversationConfirmationService.ReplyOutcome outcome) {
+        var conversation = user.getConversation();
+        lockConversation(conversation.getId());
+        // Duplicate accepted USER deliveries reference the same committed operation.
+        UUID responseId = outcome.result() != null ? outcome.result().operationId()
+                : UUID.nameUUIDFromBytes(("schedule-reply:" + outcome.outcome() + ":" + user.getId()).getBytes(StandardCharsets.UTF_8));
+        var previous = dataManager.load(AiChatMessageEntity.class).id(responseId).optional();
+        if (previous.isPresent()) {
+            var saved = previous.get();
+            if (saved.getType() != AiChatMessageEntityType.ASSISTANT || !saved.getConversation().getId().equals(conversation.getId()))
+                throw new SecurityException("Unexpected chat response");
+            return Objects.requireNonNull(saved.getContent());
+        }
+        String text = switch (outcome.outcome()) {
+            case APPLIED -> receipt(Objects.requireNonNull(outcome.result()));
+            case DECLINED -> presentation.label("declined");
+            case STALE -> presentation.label("stale");
+            default -> throw new IllegalStateException("Unexpected chat outcome");
+        };
+        var assistant = dataManager.create(AiChatMessageEntity.class);
+        assistant.setId(responseId);
+        assistant.setConversation(conversation);
+        assistant.setType(AiChatMessageEntityType.ASSISTANT);
+        assistant.setContent(text);
+        dataManager.saveWithoutReload(assistant);
+        return text;
+    }
+
+    private String receipt(ScheduleImportCommitService.CommitResult result) {
+        var content = store.load(result.operationId()).content();
+        var total = content.rows().stream().map(ScheduleImportTypes.Row::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        return presentation.label("saved") + ". " + presentation.action(content.mode()) + ". "
+                + presentation.label("rowCount") + ": " + content.rows().size() + ". "
+                + presentation.label("total") + ": " + total.toPlainString() + ".";
+    }
+
     @Override
     protected List<Message> loadHistory(UUID conversationId,AiChatMessageEntity currentUserMessage) {
         // Apply the same configured window/order, bounded by THIS persisted submission.

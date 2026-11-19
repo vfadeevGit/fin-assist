@@ -8,7 +8,6 @@ import io.jmix.flowui.fragment.FragmentDescriptor;
 import io.jmix.flowui.view.Subscribe;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Autowired;
-import ru.stnovator.finassist.ai.EntityLinksTool;
 import ru.stnovator.finassist.ai.schedule.*;
 
 import java.util.Objects;
@@ -18,18 +17,12 @@ public class ScheduleAiChatFragment extends AiChatFragment {
     @Autowired
     private ScheduleAttachmentService attachments;
     @Autowired
-    private ScheduleImportStore store;
-    @Autowired
-    private ScheduleImportWorkflow workflow;
-    @Autowired
-    private ScheduleImportTool tool;
-    @Autowired
-    private ScheduleImportCommitService commit;
-    @Autowired
-    private EntityLinksTool links;
+    private ScheduleConversationConfirmationService confirmations;
     @Autowired
     private Messages messages;
-    private ScheduleImportPanel importPanel;
+    private ScheduleConversationConfirmationService.Proposal displayed;
+    private ScheduleConversationConfirmationService.Proposal submittedObservation;
+    private ScheduleConversationConfirmationService.Proposal retryObservation;
     private AiChatMessage retryMessage;
     private ScheduleAiChatInputFragment.Pending retryAttachment;
     private boolean retryAttachmentBound;
@@ -38,12 +31,6 @@ public class ScheduleAiChatFragment extends AiChatFragment {
     @Subscribe
     public void onScheduleReady(ReadyEvent event) {
         messageBundle.setMessageGroup("io.jmix.aitoolsflowui.view.chat");
-        importPanel = new ScheduleImportPanel(store, workflow, tool, commit, links, messages, attachments, prompt -> {
-            var input = (ScheduleAiChatInputFragment) composerFragment;
-            input.focus();
-            notifications.create(prompt).show();
-        });
-        composerContainer.addComponentAsFirst(importPanel);
         retryButton = new Button(messages.getMessage("ru.stnovator.finassist.ai.view/scheduleImport.retry"), e -> retry());
         retryButton.setId("scheduleRetryMessage");
         retryButton.setVisible(false);
@@ -58,7 +45,9 @@ public class ScheduleAiChatFragment extends AiChatFragment {
             retryMessage = null;
             retryAttachment = null;
             if (retryButton != null) retryButton.setVisible(false);
-            if (importPanel != null) importPanel.clear();
+            displayed = null;
+            submittedObservation = null;
+            retryObservation = null;
         }
         ((ScheduleAiChatInputFragment) composerFragment).bindConversation(value);
         super.setConversation(value);
@@ -66,10 +55,10 @@ public class ScheduleAiChatFragment extends AiChatFragment {
     }
 
     private void restoreImport() {
-        if (importPanel != null) {
-            importPanel.setEnabled(true);
-            importPanel.bind(conversation == null ? null : conversation.getId());
-        }
+        displayed = conversation == null ? null : confirmations.pendingProposal(conversation.getId())
+                .filter(p -> timelineItemsDc.getItems().stream().anyMatch(item -> item.getMessage() != null
+                        && p.messageId().equals(item.getMessage().getId())))
+                .orElse(null);
     }
 
     public void acceptPendingAttachment(ScheduleAiChatInputFragment.Pending value) {
@@ -79,11 +68,13 @@ public class ScheduleAiChatFragment extends AiChatFragment {
     @Override
     public void sendMessage(@Nullable String message) {
         if (((ScheduleAiChatInputFragment) composerFragment).isUploading()) return;
+        submittedObservation = displayed;
         super.sendMessage(message);
     }
 
     @Override
     protected void processUserMessage(AiChatMessage actualUserMessage) {
+        retryObservation = submittedObservation;
         retryMessage = actualUserMessage;
         retryAttachment = ((ScheduleAiChatInputFragment) composerFragment).takePendingAttachment();
         retryAttachmentBound = retryAttachment == null;
@@ -92,11 +83,10 @@ public class ScheduleAiChatFragment extends AiChatFragment {
 
     private void processSubmittedMessage(AiChatMessage actualUserMessage) {
         if (retryButton != null) retryButton.setVisible(false);
-        if (importPanel != null) {
-            importPanel.clear();
-            importPanel.setEnabled(false);
-        }
         try {
+            var observed = retryObservation;
+            confirmations.captureObservation(actualUserMessage.getConversation().getId(), actualUserMessage.getId(),
+                    observed == null ? null : observed.messageId(), observed == null ? null : observed.revision());
             if (!retryAttachmentBound && retryAttachment != null) {
                 attachments.bindToMessage(retryAttachment.id(), actualUserMessage.getId());
                 retryAttachmentBound = true;
@@ -137,10 +127,6 @@ public class ScheduleAiChatFragment extends AiChatFragment {
         awaitingResponse = true;
         showThinkingIndicator();
         processSubmittedMessage(retryMessage);
-    }
-
-    public ScheduleImportPanel getImportPanel() {
-        return importPanel;
     }
 
     public Button getRetryButton() {

@@ -60,7 +60,7 @@ class ScheduleImportToolTest {
         result=tool.selectScheduleContract(result.state().operationId(),result.state().revision(),fixture.contract.getId(),context());
         assertThat(result.state().projectId()).isEqualTo(fixture.project.getId());assertThat(result.state().modes()).containsExactly(Mode.FILL);
         result=tool.previewScheduleImport(result.state().operationId(),result.state().revision(),Mode.FILL,null,null,context());
-        assertThat(result.state().nextRequired()).isEqualTo("UI_CONFIRMATION");assertThat(result.previewId()).isEqualTo(result.state().operationId());
+        assertThat(result.state().nextRequired()).isEqualTo("CHAT_PROPOSAL");assertThat(result.previewId()).isEqualTo(result.state().operationId());
         assertThat(counts()).isEqualTo(before);
     }
     @Test void forgedConversationAndAttachmentAreDenied() {
@@ -275,7 +275,7 @@ class ScheduleImportToolTest {
         assertThat(result.state().nextRequired()).isEqualTo("ADDENDUM_DETAILS");
         var stored=store.load(result.state().operationId());assertThat(stored.content().mode()).isEqualTo(Mode.ADDENDUM);assertThat(stored.content().addendumNumber()).isEqualTo("later");
         result=tool.previewScheduleImport(result.state().operationId(),result.state().revision(),Mode.ADDENDUM,"later",LocalDate.of(2027,1,1),context());
-        assertThat(result.state().nextRequired()).isEqualTo("UI_CONFIRMATION");assertThat(counts()).isEqualTo(before);
+        assertThat(result.state().nextRequired()).isEqualTo("CHAT_PROPOSAL");assertThat(counts()).isEqualTo(before);
     }
     @Test void twoSuitableSheetsAreNeverChosenSilently() throws Exception {
         byte[] bytes;try(var book=new org.apache.poi.xssf.usermodel.XSSFWorkbook();var out=new ByteArrayOutputStream()) {
@@ -286,6 +286,17 @@ class ScheduleImportToolTest {
         var result=tool.startScheduleImport(Kind.PAYMENT,context());result=tool.inspectScheduleAttachment(result.state().operationId(),result.state().revision(),context());
         assertThat(result.inspection().sheets()).hasSize(2);assertThat(result.state().mapping()).isNull();assertThat(result.state().rowCount()).isZero();assertThat(result.state().nextRequired()).isEqualTo("MAPPING");
     }
+    @Test void identicalAddendumNeedsNoNumberOrDate() {
+        fixture.payment(LocalDate.of(2026, 6, 1), "120");
+        var started = tool.startScheduleImport(Kind.PAYMENT, context()).state();
+        var rows = tool.setScheduleRows(started.operationId(), started.revision(),
+                List.of(new InputRow("2026-06-01", "120", "input")), null, context()).state();
+        var selected = tool.selectScheduleContract(rows.operationId(), rows.revision(), fixture.contract.getId(), context()).state();
+        var result = tool.previewScheduleImport(selected.operationId(), selected.revision(), Mode.ADDENDUM, null, null, context());
+        assertThat(result.message()).isEqualTo("Изменений нет");
+        assertThat(result.previewId()).isNull();
+    }
+
     @Test void unchangedPreviewReturnsExactRussianMessageAndCancellationClosesDraft() {
         fixture.payment(LocalDate.of(2026,6,1),"120");var before=counts();
         var result=tool.startScheduleImport(Kind.PAYMENT,context());result=tool.setScheduleRows(result.state().operationId(),result.state().revision(),List.of(new InputRow("2026-06-01","120","input")),null,context());result=tool.selectScheduleContract(result.state().operationId(),result.state().revision(),fixture.contract.getId(),context());

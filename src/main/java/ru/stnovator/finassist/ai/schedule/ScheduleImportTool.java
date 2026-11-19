@@ -139,24 +139,45 @@ public class ScheduleImportTool implements JmixAiTool {
     @Tool(description="Select a user-chosen contract. One actual accessible project is selected automatically; several require a choice, none require another contract.")
     public Result selectScheduleContract(UUID operationId,long revision,UUID contractId,ToolContext context) {
         current(operationId,revision,context);var choices=workflow.selectContract(operationId,revision,contractId);
-        var draft=store.load(operationId);return new Result(state(draft),choices,null,List.of(),null,choices.isEmpty()?"Choose another contract: no projects":"Choose project or mode");
+        var draft = store.load(operationId);
+        String guidance = switch (choices.size()) {
+            case 0 -> "Choose another contract: no projects";
+            case 1 -> "One project selected automatically. Follow its allowed modes.";
+            default -> "Ask the user to choose one project";
+        };
+        return new Result(state(draft), choices, null, List.of(), null, guidance);
     }
     @Tool(description="Select one of the chosen contract's accessible projects and obtain allowed schedule modes. Never creates a project.")
     public Result selectScheduleProject(UUID operationId,long revision,UUID projectId,ToolContext context) {
         current(operationId,revision,context);return result(workflow.selectProject(operationId,revision,projectId));
     }
-    @Tool(description="Prepare a complete current preview only. ADDENDUM needs number and effectiveDate after every correction. No business records are saved; only the explicit UI button can confirm.")
-    public Result previewScheduleImport(UUID operationId,long revision,Mode mode,String number,LocalDate effectiveDate,ToolContext context) {
+    @Tool(description="Prepare a complete current preview only. ADDENDUM needs number and effectiveDate after every correction. No business records are saved; the server publishes the complete proposal and handles a subsequent actual user reply.")
+    public Result previewScheduleImport(UUID operationId,long revision,
+            @ToolParam(required=false) Mode mode, @ToolParam(required=false) String number,
+            @ToolParam(required=false) LocalDate effectiveDate, ToolContext context) {
         var current=current(operationId,revision,context);
-        if(mode==null)return new Result(state(store.load(operationId)),List.of(),null,List.of(),null,"MODE: choose allowed mode");
+        if (mode == null) {
+            var modes = workflow.selectionModes(current);
+            if (modes.size() != 1)
+                return new Result(state(current), List.of(), null, List.of(), null, "Choose replacement or addendum in chat");
+            mode = modes.iterator().next();
+        }
         if(mode==Mode.ADDENDUM && (number==null || number.isBlank() || effectiveDate==null)) {
-            if(!workflow.allowedModes(operationId).contains(mode))throw new IllegalArgumentException("Schedule mode is unavailable");
+            if (workflow.unchanged(current, mode)) {
+                prepared(context, current, mode, true);
+                return new Result(state(current), List.of(), null, List.of(), null, "Изменений нет");
+            }
             var c=current.content();
             var draft=store.update(operationId,revision,new DraftContent(c.kind(),c.source(),c.sourceMessageId(),c.mapping(),c.rows(),c.contractId(),c.projectId(),mode,number,effectiveDate,null));
             return new Result(state(draft),List.of(),null,List.of(),null,"ADDENDUM_DETAILS: number and effectiveDate required");
         }
         var preview=workflow.preview(operationId,revision,mode,number,effectiveDate);var draft=store.load(operationId);
-        return new Result(state(draft),List.of(),null,List.of(),preview.noChanges()?null:operationId,preview.noChanges()?"Изменений нет":"Preview ready. Use Подтвердить сохранение in the UI; nothing saved yet.");
+        prepared(context, draft, mode, preview.noChanges());
+        return new Result(state(draft),List.of(),null,List.of(),preview.noChanges()?null:operationId,preview.noChanges()?"Изменений нет":"Preview prepared. The server publishes the full proposal; await a new user reply.");
+    }
+    private static void prepared(ToolContext context, Draft draft, Mode mode, boolean unchanged) {
+        if (context.getContext().get(ScheduleChatContext.PREVIEW_OUTPUT) instanceof ScheduleChatContext.PreviewOutput output)
+            output.prepared(new ScheduleChatContext.PreviewOutput.Candidate(draft.operationId(), draft.revision(), mode, unchanged));
     }
     @Tool(description="Cancel this operation at its current revision without changing business records.")
     public Result cancelScheduleImport(UUID operationId,long revision,ToolContext context) {
@@ -209,7 +230,7 @@ public class ScheduleImportTool implements JmixAiTool {
         Set<Mode> modes=workflow.selectionModes(draft);
         if(draft.status()!=Status.COLLECTING && draft.status()!=Status.PREVIEW_READY)return redacted(draft,"CLOSED");
         var c=draft.content();
-        String next=draft.status()==Status.PREVIEW_READY?"UI_CONFIRMATION":c.rows().isEmpty()?(c.source()==null?"ROWS":"MAPPING"):c.contractId()==null?"CONTRACT":c.projectId()==null?"PROJECT":c.mode()==Mode.ADDENDUM&&(c.addendumNumber()==null||c.addendumNumber().isBlank()||c.effectiveDate()==null)?"ADDENDUM_DETAILS":"MODE";
+        String next=draft.status()==Status.PREVIEW_READY?"CHAT_PROPOSAL":c.rows().isEmpty()?(c.source()==null?"ROWS":"MAPPING"):c.contractId()==null?"CONTRACT":c.projectId()==null?"PROJECT":c.mode()==Mode.ADDENDUM&&(c.addendumNumber()==null||c.addendumNumber().isBlank()||c.effectiveDate()==null)?"ADDENDUM_DETAILS":modes.size()==1?"PREPARE_PREVIEW":"MODE";
         return new State(draft.operationId(),draft.revision(),draft.status(),c.kind(),c.source(),c.sourceMessageId(),c.mapping(),c.rows().size(),c.rows().stream().map(Row::amount).reduce(BigDecimal.ZERO,BigDecimal::add),c.contractId(),c.projectId(),modes,c.mode(),c.addendumNumber(),c.effectiveDate(),next,c.source()==null?null:attachments.boundMetadata(c.source(),draft.conversationId(),c.sourceMessageId()));
     }
 }

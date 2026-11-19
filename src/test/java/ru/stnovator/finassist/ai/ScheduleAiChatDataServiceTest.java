@@ -24,6 +24,7 @@ import static org.mockito.Mockito.*;
 class ScheduleAiChatDataServiceTest {
     @Autowired ScheduleAiChatDataService service;
     @Autowired ScheduleImportWorkflow workflow;
+    @Autowired ScheduleConversationConfirmationService confirmations;
     @Autowired UnconstrainedDataManager data;
     @Autowired SystemAuthenticator auth;
     @Autowired ScheduleImportStore store;
@@ -135,7 +136,9 @@ class ScheduleAiChatDataServiceTest {
     public interface DenyProject {
         @io.jmix.security.role.annotation.JpqlRowLevelPolicy(entityClass=Project.class,where="1=0") void projects();
     }
-    @Test void mockModelOrchestratesDataContractProjectModeDetailsPreviewWithoutSaving() {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void mockModelOrchestratesDataContractProjectModeDetailsPreviewWithoutSaving(boolean laterSubmission) {
         try(var fixture=new ru.stnovator.finassist.test_support.RelatedFixtures(secured,auth)) {
             fixture.payment(java.time.LocalDate.of(2026,6,1),"100");
             var initial=domainCounts();var calls=new java.util.concurrent.atomic.AtomicInteger();
@@ -144,7 +147,7 @@ class ScheduleAiChatDataServiceTest {
             when(model.call(any(Prompt.class))).thenAnswer(invocation->{
                 Prompt prompt=invocation.getArgument(0);int step=calls.getAndIncrement();String name;Map<String,Object> arguments=new HashMap<>();
                 if(step==0){name="startScheduleImport";arguments.put("kind","PAYMENT");}
-                else if(step>=5){assertThat(toolResponses(prompt)).contains("UI_CONFIRMATION");return new ChatResponse(List.of(new Generation(new AssistantMessage("Preview ready"))));}
+                else if(step>=5){assertThat(toolResponses(prompt)).contains("CHAT_PROPOSAL");return new ChatResponse(List.of(new Generation(new AssistantMessage("Preview ready"))));}
                 else {
                     var draft=store.load(data.load(AiScheduleImport.class).query("select e from AiScheduleImport e where e.originalConversationId=:c").parameter("c",conversation).one().getId());
                     arguments.put("operationId",draft.operationId());arguments.put("revision",draft.revision());
@@ -156,7 +159,25 @@ class ScheduleAiChatDataServiceTest {
             });
             ReflectionTestUtils.setField(service,"chatClient",ChatClient.builder(model).defaultAdvisors(org.springframework.ai.chat.client.advisor.ToolCallingAdvisor.builder().build()).defaultToolContext(Map.of(AiToolStatusPublisher.DEFAULT_TOOL_CONTEXT_MARKER,true)).build());
             var ui=data.create(io.jmix.aitoolsflowui.model.AiChatMessage.class);ui.setId(message);
-            assertThat(service.processMessage(ui,update->{})).isEqualTo("Preview ready");assertThat(calls.get()).isEqualTo(6);assertThat(domainCounts()).isEqualTo(initial);
+            if (laterSubmission) {
+                message("Изменить запрос");
+                for (int attempt = 0; attempt < 2; attempt++) {
+                    calls.set(0);
+                    assertThatThrownBy(() -> service.processMessage(ui))
+                            .isInstanceOf(ConcurrentModificationException.class);
+                    assertThat(confirmations.pendingProposal(conversation)).isEmpty();
+                    assertThat(data.load(AiChatMessageEntity.class).query("e.conversation.id=:c and e.type=:type")
+                            .parameter("c", conversation).parameter("type", AiChatMessageEntityType.ASSISTANT.getId()).list()).isEmpty();
+                }
+                return;
+            }
+            String response = service.processMessage(ui, update -> {});
+            assertThat(response).contains("2026-06-01", "120", "2027-01-01", "Применить");
+            assertThat(calls.get()).isEqualTo(6);
+            assertThat(domainCounts()).isEqualTo(initial);
+            var proposal = confirmations.pendingProposal(conversation).orElseThrow();
+            assertThat(data.load(AiChatMessageEntity.class).id(proposal.messageId()).one().getContent()).isEqualTo(response);
+
         }
     }
     @org.junit.jupiter.params.ParameterizedTest
