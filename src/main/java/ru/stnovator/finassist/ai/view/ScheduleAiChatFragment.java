@@ -3,6 +3,7 @@ package ru.stnovator.finassist.ai.view;
 import com.vaadin.flow.component.button.Button;
 import io.jmix.aitoolsflowui.model.*;
 import io.jmix.aitoolsflowui.view.chat.AiChatFragment;
+import io.jmix.aitoolsflowui.view.chat.timeline.TimelineItemType;
 import io.jmix.core.Messages;
 import io.jmix.flowui.fragment.FragmentDescriptor;
 import io.jmix.flowui.view.Subscribe;
@@ -56,8 +57,9 @@ public class ScheduleAiChatFragment extends AiChatFragment {
 
     private void restoreImport() {
         displayed = conversation == null ? null : confirmations.pendingProposal(conversation.getId())
-                .filter(p -> timelineItemsDc.getItems().stream().anyMatch(item -> item.getMessage() != null
-                        && p.messageId().equals(item.getMessage().getId())))
+                .filter(p -> timelineItemsDc.getItems().stream()
+                        .filter(item -> item.getType() == TimelineItemType.ASSISTANT && item.getMessage() != null)
+                        .anyMatch(item -> p.matchesDisplayed(item.getMessage().getId(), item.getMessage().getContent())))
                 .orElse(null);
     }
 
@@ -91,7 +93,7 @@ public class ScheduleAiChatFragment extends AiChatFragment {
                 attachments.bindToMessage(retryAttachment.id(), actualUserMessage.getId());
                 retryAttachmentBound = true;
                 timelineItemsDc.getItems().stream()
-                        .filter(item -> item.getType() == io.jmix.aitoolsflowui.view.chat.timeline.TimelineItemType.USER
+                        .filter(item -> item.getType() == TimelineItemType.USER
                                 && item.getMessage() != null && actualUserMessage.getId().equals(item.getMessage().getId()))
                         .findFirst().ifPresent(this::refreshTimelineItem);
             }

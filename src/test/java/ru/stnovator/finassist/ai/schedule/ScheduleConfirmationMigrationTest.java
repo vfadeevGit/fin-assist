@@ -59,8 +59,14 @@ class ScheduleConfirmationMigrationTest {
                     jdbc.update("insert into aitls_ai_chat_message_entity values (?), (?)", proposal, user);
                     jdbc.update("insert into ai_schedule_proposal values(?,?,?,?,?,false)", proposal, conversation, operation, 5, "digest");
                     jdbc.update("insert into ai_schedule_reply values(?,?,?,?)", user, proposal, 5, "APPLIED");
+                    UUID pending = UUID.randomUUID();
+                    jdbc.update("insert into aitls_ai_chat_message_entity values (?)", pending);
+                    jdbc.update("insert into ai_schedule_proposal values(?,?,?,?,?,true)", pending, conversation, operation, 6, "next");
                 }
                 migration.afterPropertiesSet();
+                migration.setChangeLog("classpath:ru/stnovator/finassist/liquibase/changelog/2026/11/19-000200-proposal-content.xml");
+                migration.afterPropertiesSet();
+                assertThat(jdbc.queryForObject("select count(*) from ai_schedule_proposal where pending", Integer.class)).isZero();
                 if (legacy) {
                     assertThat(jdbc.queryForObject("select applied_operation_id from ai_schedule_reply where message_id=?", UUID.class, user))
                             .isEqualTo(operation);

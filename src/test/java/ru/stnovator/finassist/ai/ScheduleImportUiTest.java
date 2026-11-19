@@ -46,6 +46,8 @@ import static ru.stnovator.finassist.ai.schedule.ScheduleImportTypes.*;
 @SpringBootTest(classes = {FinAssistApplication.class, FlowuiTestAssistConfiguration.class})
 class ScheduleImportUiTest {
     @Autowired
+    io.jmix.core.UnconstrainedDataManager nativeData;
+    @Autowired
     Fragments fragments;
     @Autowired
     ViewNavigators navigators;
@@ -326,27 +328,34 @@ class ScheduleImportUiTest {
         assertThat(renderer.getContent().getElement().getTextRecursively()).doesNotContain(name);
     }
 
-    @Test
-    void staleTabAndItsRetryCaptureOnlyTheDisplayedProposal() {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"Первое предложение", "", "Другая версия"})
+    void staleTabAndItsRetryCaptureOnlyTheDisplayedProposal(String boundContent) {
         auth.runWithUser("admin", () -> {
             var chat = conversations.create();
             try {
-                var first = chatMessages.createMessage(chat, AiChatMessageType.ASSISTANT, "Первое предложение");
-                var displayed = new ScheduleConversationConfirmationService.Proposal(first.getId(), operation, 7, "first");
+                var row = nativeData.create(io.jmix.aitoolsflowuidata.entity.AiChatMessageEntity.class);
+                row.setConversation(nativeData.load(io.jmix.aitoolsflowuidata.entity.AiConversationEntity.class).id(chat.getId()).one());
+                row.setType(io.jmix.aitoolsflowuidata.entity.AiChatMessageEntityType.ASSISTANT);
+                row.setContent(boundContent);
+                var first = nativeData.save(row);
+                var displayed = new ScheduleConversationConfirmationService.Proposal(first.getId(), operation, 7, "first", "37304bd6cda95c858e57015f7c945a7bc23993a811b6dbc73bc76f686730603b");
                 when(confirmations.pendingProposal(chat.getId())).thenReturn(Optional.of(displayed));
                 navigators.view(UiTestUtils.getCurrentView(), AiChatView.class)
                         .withRouteParameters(new com.vaadin.flow.router.RouteParameters("id", chat.getId().toString())).navigate();
                 var fragment = (ScheduleAiChatFragment) UiTestUtils.getComponent(UiTestUtils.getCurrentView(), "chatFragment");
                 var newer = chatMessages.createMessage(chat, AiChatMessageType.ASSISTANT, "Второе предложение");
                 when(confirmations.pendingProposal(chat.getId())).thenReturn(Optional.of(
-                        new ScheduleConversationConfirmationService.Proposal(newer.getId(), operation, 8, "second")));
+                        new ScheduleConversationConfirmationService.Proposal(newer.getId(), operation, 8, "second", "46b249d773d171e7a6ea688d4290460fc74d8f1321023fbc00204e7abe50705c")));
                 doAnswer(i -> { ((Runnable) i.getArgument(5)).run(); return null; })
                         .when(coordinator).run(any(), any(), any(), any(), any(), any());
                 fragment.sendMessage("Да");
                 var actual = chatMessages.loadMessages(chat).stream().filter(m -> m.getType() == AiChatMessageType.USER)
                         .findFirst().orElseThrow();
                 fragment.getRetryButton().click();
-                verify(confirmations, times(2)).captureObservation(chat.getId(), actual.getId(), first.getId(), 7L);
+                boolean full = "Первое предложение".equals(boundContent);
+                verify(confirmations, times(2)).captureObservation(chat.getId(), actual.getId(),
+                        full ? first.getId() : null, full ? 7L : null);
             } finally {
                 conversations.remove(chat);
             }

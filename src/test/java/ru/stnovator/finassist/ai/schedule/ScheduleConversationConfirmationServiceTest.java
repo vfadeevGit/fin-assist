@@ -42,6 +42,22 @@ class ScheduleConversationConfirmationServiceTest {
         service.captureObservation(fixtures.conversation, user, proposal, revision);
         return user;
     }
+    @Test void publicationRecognizesOnlyItsExactBoundContent() {
+        var preview = fixtures.preview(Kind.PAYMENT, Mode.FILL);
+        String full = "2026-06-01 | 120.00\n2026-06-02 | 80.00\nПрименить эти изменения?";
+        UUID id = message(ASSISTANT, full);
+        service.publishProposal(preview.operationId(), preview.revision(), id);
+        var publication = service.pendingProposal(fixtures.conversation).orElseThrow();
+        assertThat(publication.matchesDisplayed(id, full)).isTrue();
+        assertThat(publication.matchesDisplayed(id, "")).isFalse();
+        assertThat(publication.matchesDisplayed(id, full.replace("80.00", "81.00"))).isFalse();
+        assertThat(publication.matchesDisplayed(UUID.randomUUID(), full)).isFalse();
+        var assistant = data.load(AiChatMessageEntity.class).id(id).one();
+        assistant.setContent("Новая редакция");
+        data.saveWithoutReload(assistant);
+        assertThat(service.pendingProposal(fixtures.conversation)).isEmpty();
+    }
+
     @Test void onlyActualObservedProposalCanCommitAndRetry() {
         var preview = fixtures.preview(Kind.PAYMENT, Mode.FILL);
         assertThat(service.pendingProposal(fixtures.conversation)).isEmpty();

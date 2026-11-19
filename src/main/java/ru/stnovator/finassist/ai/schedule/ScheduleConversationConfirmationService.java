@@ -13,7 +13,11 @@ import org.springframework.transaction.support.TransactionTemplate;
 import ru.stnovator.finassist.entity.AiScheduleImport;
 
 import javax.sql.DataSource;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.OffsetDateTime;
+import java.util.HexFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.ConcurrentModificationException;
@@ -31,7 +35,17 @@ public class ScheduleConversationConfirmationService {
     public record ReplyOutcome(Outcome outcome, ScheduleImportCommitService.CommitResult result) {
         ReplyOutcome(Outcome outcome) { this(outcome, null); }
     }
-    public record Proposal(UUID messageId, UUID operationId, long revision, String fingerprint) {}
+    public record Proposal(UUID messageId, UUID operationId, long revision, String fingerprint, String contentDigest) {
+        public boolean matchesDisplayed(UUID boundMessageId, String boundContent) {
+            if (!messageId.equals(boundMessageId) || boundContent == null || boundContent.isBlank()) return false;
+            try {
+                var sha256 = MessageDigest.getInstance("SHA-256");
+                return HexFormat.of().formatHex(sha256.digest(boundContent.getBytes(StandardCharsets.UTF_8))).equals(contentDigest);
+            } catch (NoSuchAlgorithmException unavailable) {
+                throw new IllegalStateException("SHA-256 is required", unavailable);
+            }
+        }
+    }
     private record Observation(UUID proposalId, Long revision, String outcome, UUID appliedOperation, boolean contentMatches) {}
     private final JdbcTemplate jdbc;
     private final TransactionTemplate reserveConsent;
@@ -63,15 +77,21 @@ public class ScheduleConversationConfirmationService {
             throw new ConcurrentModificationException("Preview is no longer current");
         var current = pending(conversationId);
         if (current.isPresent() && current.get().messageId().equals(proposalMessageId)
-                && current.get().operationId().equals(operationId) && current.get().revision() == revision) return;
+                && current.get().operationId().equals(operationId) && current.get().revision() == revision) {
+            if (!current.get().matchesDisplayed(proposalMessageId, assistant.getContent()))
+                throw new ConcurrentModificationException("Published proposal content changed");
+            return;
+        }
         if (Boolean.TRUE.equals(jdbc.queryForObject("""
                 select exists(select 1 from aitls_ai_chat_message_entity
                 where conversation_id=? and created_date>=? and id<>?)
                 """, Boolean.class, conversationId, assistant.getCreatedDate(), assistant.getId())))
             throw new ConcurrentModificationException("Conversation has moved on");
         retire(conversationId);
-        jdbc.update("insert into ai_schedule_proposal(message_id, conversation_id, operation_id, revision, fingerprint, pending) values(?,?,?,?,?,true)",
-                proposalMessageId, conversationId, operationId, revision, draft.content().fingerprint());
+        jdbc.update("""
+                insert into ai_schedule_proposal(message_id, conversation_id, operation_id, revision, fingerprint, pending, content_digest)
+                values(?,?,?,?,?,true,sha256(convert_to(?, 'UTF8')))
+                """, proposalMessageId, conversationId, operationId, revision, draft.content().fingerprint(), assistant.getContent());
     }
 
     /** Capture once, including absence; retries cannot substitute a newer observation. */
@@ -90,7 +110,8 @@ public class ScheduleConversationConfirmationService {
 
     public Optional<Proposal> pendingProposal(UUID conversationId) {
         lockConversation(conversationId);
-        return pending(conversationId).filter(this::matchesDraft);
+        return pending(conversationId).filter(this::matchesDraft)
+                .filter(p -> p.matchesDisplayed(p.messageId(), message(conversationId, p.messageId(), ASSISTANT).getContent()));
     }
 
     public ReplyOutcome handleReply(UUID conversationId, UUID userMessageId) {
@@ -126,7 +147,8 @@ public class ScheduleConversationConfirmationService {
     private ReplyOutcome process(UUID conversationId, AiChatMessageEntity user, Observation observation, Proposal proposal) {
         var assistant = message(conversationId, proposal.messageId(), ASSISTANT);
         if (!Objects.requireNonNull(assistant.getCreatedDate()).isBefore(user.getCreatedDate())) return new ReplyOutcome(Outcome.STALE);
-        if (!observation.contentMatches() || !Objects.equals(observation.proposalId(), proposal.messageId())
+        if (!proposal.matchesDisplayed(assistant.getId(), assistant.getContent()) || !observation.contentMatches()
+                || !Objects.equals(observation.proposalId(), proposal.messageId())
                 || !Objects.equals(observation.revision(), proposal.revision()) || !matchesDraft(proposal)) {
             retire(conversationId);
             return new ReplyOutcome(Outcome.STALE);
@@ -185,8 +207,8 @@ public class ScheduleConversationConfirmationService {
     }
 
     private Optional<Proposal> pending(UUID conversationId) {
-        return jdbc.query("select message_id, operation_id, revision, fingerprint from ai_schedule_proposal where conversation_id=? and pending",
-                (rs, n) -> new Proposal(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class), rs.getLong(3), rs.getString(4)),
+        return jdbc.query("select message_id, operation_id, revision, fingerprint, encode(content_digest, 'hex') from ai_schedule_proposal where conversation_id=? and pending",
+                (rs, n) -> new Proposal(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class), rs.getLong(3), rs.getString(4), rs.getString(5)),
                 conversationId).stream().findFirst();
     }
 
