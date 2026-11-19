@@ -1,6 +1,7 @@
 package ru.stnovator.finassist.ai.schedule;
 
 import tools.jackson.databind.json.JsonMapper;
+import io.jmix.aitoolsflowuidata.entity.AiChatMessageEntity;
 import io.jmix.core.UnconstrainedDataManager;
 import jakarta.persistence.LockModeType;
 import org.springframework.stereotype.Service;
@@ -15,8 +16,20 @@ public class ScheduleImportStore {
     public enum Status { COLLECTING, PREVIEW_READY, SAVED, CANCELLED, EXPIRED }
     public record DraftContent(Kind kind, UUID source, UUID sourceMessageId, ScheduleTableTypes.Mapping mapping,
                                List<Row> rows, UUID contractId, UUID projectId, Mode mode,
-                               String addendumNumber, LocalDate effectiveDate, String fingerprint) {
+                               String addendumNumber, LocalDate effectiveDate, String fingerprint,
+                               UUID requestMessageId,UUID startedByMessageId) {
         public DraftContent { rows = rows == null ? List.of() : List.copyOf(rows); }
+        public DraftContent(Kind kind,UUID source,UUID sourceMessageId,ScheduleTableTypes.Mapping mapping,
+                            List<Row> rows,UUID contractId,UUID projectId,Mode mode,String addendumNumber,
+                            LocalDate effectiveDate,String fingerprint) {
+            this(kind,source,sourceMessageId,mapping,rows,contractId,projectId,mode,addendumNumber,effectiveDate,fingerprint,null,null);
+        }
+        UUID requestOrSource() {
+            return requestMessageId==null?sourceMessageId:requestMessageId;
+        }
+        private UUID startedBy() {
+            return startedByMessageId==null?requestOrSource():startedByMessageId;
+        }
     }
     public record Draft(UUID operationId, UUID conversationId, long revision, Status status,
                         OffsetDateTime createdAt, OffsetDateTime touchedAt, OffsetDateTime terminalAt,
@@ -55,14 +68,66 @@ public class ScheduleImportStore {
                 .parameter("conversation", conversationId).parameter("owner", ownership.username())
                 .parameter("status", Status.SAVED.name()).list().stream().map(this::draft).toList();
     }
+    /** Resolve a retry by the initial request, even after a later message selects a different source. */
+    @Transactional(readOnly = true)
+    Optional<UUID> findStartedBy(UUID conversationId,UUID userMessageId,Kind kind) {
+        ownership.userMessage(userMessageId,conversationId);
+        return data.load(AiScheduleImport.class)
+                .query("select e from AiScheduleImport e where e.originalConversationId=:conversation and e.owner=:owner order by e.createdDate, e.id")
+                .parameter("conversation",conversationId).parameter("owner",ownership.username()).list().stream()
+                .filter(entity->{
+                    var content=decode(entity.getContentJson());
+                    return content!=null && content.kind()==kind && userMessageId.equals(content.startedBy());
+                }).map(AiScheduleImport::getId).findFirst();
+    }
     @Transactional
     public Draft update(UUID operationId, long expectedRevision, DraftContent content) {
         Objects.requireNonNull(content,"content");
         var entity=editable(operationId,expectedRevision);
-        if(content.sourceMessageId()!=null)ownership.userMessage(content.sourceMessageId(),entity.getOriginalConversationId());
-        entity.setAttachment(content.source()==null ? null : attachments.reference(content.source(),entity.getOriginalConversationId(),operationId));
+        var prior=decode(entity.getContentJson());
+        UUID request=prior!=null && prior.requestOrSource()!=null?prior.requestOrSource():content.sourceMessageId();
+        UUID conversationId=entity.getOriginalConversationId();
+        if (content.sourceMessageId()!=null) ownership.userMessage(content.sourceMessageId(),conversationId);
+        if (request!=null) ownership.userMessage(request,conversationId);
+        var attachment=content.source()==null?null:attachments.reference(content.source(),conversationId);
+        if (attachment!=null) {
+            // Historical staged-only internal drafts are readable. New chat drafts must be bound to a USER.
+            if (!Objects.equals(attachment.getSourceMessageId(),content.sourceMessageId())
+                    || (attachment.getSourceMessageId()==null && request!=null))
+                throw new SecurityException("Attachment is unavailable for this submission");
+            if (request!=null) attachments.submittedSource(attachment,conversationId,request);
+            attachments.requireAvailable(attachment);
+        }
+        entity.setAttachment(attachment);
+        return updateContent(entity,content,request,prior);
+    }
+    /** Select exactly one submitted source and discard all data derived from the previous file. */
+    @Transactional
+    public Draft selectSource(UUID operationId,long expectedRevision,UUID attachmentId,UUID actualUserMessageId) {
+        var entity=editable(operationId,expectedRevision);
+        var current=decode(entity.getContentJson());
+        if (current==null) throw new IllegalStateException("Draft content is required");
+        UUID conversationId=entity.getOriginalConversationId();
+        var request=ownership.userMessage(actualUserMessageId,conversationId);
+        requireVisible(current.requestOrSource(),conversationId,request);
+        if (!Objects.equals(current.requestOrSource(),current.sourceMessageId()))
+            requireVisible(current.sourceMessageId(),conversationId,request);
+        var attachment=attachments.reference(attachmentId,conversationId);
+        var source=attachments.submittedSource(attachment,conversationId,actualUserMessageId);
+        attachments.requireAvailable(attachment);
+        if (attachmentId.equals(current.source()) && actualUserMessageId.equals(current.requestOrSource())) return draft(entity);
+        entity.setAttachment(attachment);
+        return updateContent(entity,new DraftContent(current.kind(),attachmentId,source.getId(),null,List.of(),
+                current.contractId(),current.projectId(),null,null,null,null),actualUserMessageId,current);
+    }
+    private void requireVisible(UUID messageId,UUID conversationId,AiChatMessageEntity request) {
+        if (messageId!=null && !ScheduleChatContext.atOrBefore(ownership.userMessage(messageId,conversationId),request))
+            throw new SecurityException("Import is unavailable for this submission");
+    }
+    private Draft updateContent(AiScheduleImport entity,DraftContent content,UUID request,DraftContent prior) {
+        UUID startedBy=prior==null || prior.startedBy()==null?request:prior.startedBy();
         var invalidated=new DraftContent(content.kind(),content.source(),content.sourceMessageId(),content.mapping(),content.rows(),
-                content.contractId(),content.projectId(),content.mode(),content.addendumNumber(),content.effectiveDate(),null);
+                content.contractId(),content.projectId(),content.mode(),content.addendumNumber(),content.effectiveDate(),null,request,startedBy);
         entity.setContentJson(encode(invalidated)); entity.setStatus(Status.COLLECTING.name());
         advance(entity);
         return draft(data.save(entity));
@@ -78,7 +143,7 @@ public class ScheduleImportStore {
         var entity=editable(operationId,expectedRevision);var c=decode(entity.getContentJson());
         if(c==null) throw new IllegalStateException("Draft content is required");
         entity.setContentJson(encode(new DraftContent(c.kind(),c.source(),c.sourceMessageId(),c.mapping(),c.rows(),
-                c.contractId(),c.projectId(),c.mode(),c.addendumNumber(),c.effectiveDate(),fingerprint)));
+                c.contractId(),c.projectId(),c.mode(),c.addendumNumber(),c.effectiveDate(),fingerprint,c.requestOrSource(),c.startedBy())));
         entity.setStatus(Status.PREVIEW_READY.name());advance(entity);return draft(data.save(entity));
     }
     /** Task8 uses this in its own transaction, then saves SAVED/resultId in that same domain transaction. */

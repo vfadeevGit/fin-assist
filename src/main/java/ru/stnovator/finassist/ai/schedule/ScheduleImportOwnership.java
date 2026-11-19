@@ -23,12 +23,14 @@ public class ScheduleImportOwnership {
         if (!username().equals(conversation.getUsername())) throw new SecurityException("Conversation is unavailable");
         return conversation;
     }
-    public void userMessage(UUID id, UUID conversationId) {
+    public AiChatMessageEntity userMessage(UUID id, UUID conversationId) {
+        if (id == null) throw new SecurityException("Source message is unavailable");
         var message=data.load(AiChatMessageEntity.class).id(id).optional()
                 .orElseThrow(()->new SecurityException("Source message is unavailable"));
         if(!message.getConversation().getId().equals(conversationId) || message.getType()!=AiChatMessageEntityType.USER)
             throw new SecurityException("Source message is unavailable");
         conversation(conversationId);
+        return message;
     }
     public void check(String owner, UUID conversationId) {
         if (!username().equals(owner)) throw new SecurityException("Import is unavailable");

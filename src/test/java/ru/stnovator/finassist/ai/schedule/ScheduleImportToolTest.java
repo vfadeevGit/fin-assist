@@ -18,6 +18,7 @@ import java.time.LocalDate;
 import java.util.*;
 import static org.assertj.core.api.Assertions.*;
 import static ru.stnovator.finassist.ai.schedule.ScheduleImportTypes.*;
+import static ru.stnovator.finassist.ai.schedule.ScheduleImportStore.Status;
 
 @SpringBootTest
 class ScheduleImportToolTest {
@@ -50,7 +51,7 @@ class ScheduleImportToolTest {
     }
     @Test void toolsCannotCommit() {
         assertThat(Arrays.stream(ScheduleImportTool.class.getDeclaredMethods()).filter(m->m.isAnnotationPresent(Tool.class)).map(java.lang.reflect.Method::getName))
-                .containsExactlyInAnyOrder("startScheduleImport","inspectScheduleAttachment","applyScheduleMapping","setScheduleRows","findScheduleContracts","selectScheduleContract","selectScheduleProject","previewScheduleImport","cancelScheduleImport");
+                .containsExactlyInAnyOrder("startScheduleImport","listScheduleAttachments","selectScheduleAttachment","inspectScheduleAttachment","applyScheduleMapping","setScheduleRows","findScheduleContracts","selectScheduleContract","selectScheduleProject","previewScheduleImport","cancelScheduleImport");
         var before=counts();var result=tool.startScheduleImport(Kind.PAYMENT,context());
         result=tool.setScheduleRows(result.state().operationId(),result.state().revision(),List.of(new InputRow("2026-06-01","120","forged")),null,context());
         assertThat(store.load(result.state().operationId()).content().sourceMessageId()).isEqualTo(message);
@@ -95,6 +96,106 @@ class ScheduleImportToolTest {
             assertThat(a.fileName()).isEqualTo("plan.csv");assertThat(a.available()).isFalse();
         });
         assertThat(attachments.boundMetadata(file,conversation,message).available()).isFalse();
+    }
+    @Test void pagesKeepDuplicateNamesDistinctAndExcludeStagedAndFutureFiles() {
+        var sources=new LinkedHashMap<UUID,UUID>();
+        for (int i=0;i<13;i++) {
+            var source=message(conversation,AiChatMessageEntityType.USER,"File "+i);
+            var file=stage("date;amount\n2026-06-01;120");
+            attachments.bindToMessage(file,source);
+            sources.put(file,source);
+        }
+        message=message(conversation,AiChatMessageEntityType.USER,"Use a file");
+        stage("Unsubmitted");
+        var future=stage("Future");
+        attachments.bindToMessage(future,message(conversation,AiChatMessageEntityType.USER,"Later file"));
+        var page=tool.listScheduleAttachments(0,context());
+        assertThat(page.totalCount()).isEqualTo(13);
+        assertThat(page.files()).hasSize(12);
+        assertThat(page.nextOffset()).isEqualTo(12);
+        var last=tool.listScheduleAttachments(page.nextOffset(),context());
+        assertThat(last.nextOffset()).isNull();
+        var all=new ArrayList<>(page.files());
+        all.addAll(last.files());
+        assertThat(all).extracting(ScheduleAttachmentService.SubmittedAttachment::id).containsExactlyInAnyOrderElementsOf(sources.keySet());
+        assertThat(all).allSatisfy(file->{
+            assertThat(file.fileName()).isEqualTo("plan.csv");
+            assertThat(file.sourceMessageId()).isEqualTo(sources.get(file.id()));
+            assertThat(file.submittedAt()).isNotNull();
+        });
+    }
+    @Test void historicalSourceRetainsBothMessageIdsAndRetryReusesDraft() {
+        var original=message;
+        var file=stage("date;amount\n2026-06-01;120");
+        attachments.bindToMessage(file,original);
+        var first=tool.startScheduleImport(Kind.PAYMENT,context()).state();
+        store.cancel(first.operationId(),first.revision());
+        message=message(conversation,AiChatMessageEntityType.USER,"Reuse the previous file");
+        var request=message;
+        var draft=tool.startScheduleImport(Kind.PAYMENT,context()).state();
+        var selected=tool.selectScheduleAttachment(draft.operationId(),draft.revision(),file,context());
+        assertThat(selected.inspection().sheets()).hasSize(1);
+        assertThat(selected.state().sourceMessageId()).isEqualTo(original);
+        var retry=tool.startScheduleImport(Kind.PAYMENT,context()).state();
+        assertThat(retry.operationId()).isEqualTo(draft.operationId());
+        assertThat(retry.revision()).isEqualTo(selected.state().revision());
+        assertThat(store.load(retry.operationId()).content().requestMessageId()).isEqualTo(request);
+        message=original;
+        assertThat(tool.conversationState(conversation,original)).isEmpty();
+    }
+    @Test void missingOriginalRemainsVisibleAndCannotReplaceDraftSource() {
+        var file=stage("date;amount\n2026-06-01;120");
+        attachments.bindToMessage(file,message);
+        var saved=data.load(AiScheduleAttachment.class).id(file).one().getFileRef();
+        storages.getByName(saved.getStorageName()).removeFile(saved);
+        message=message(conversation,AiChatMessageEntityType.USER,"Use the previous file");
+        var draft=tool.startScheduleImport(Kind.PAYMENT,context()).state();
+        assertThat(tool.listScheduleAttachments(0,context()).files()).singleElement()
+                .satisfies(metadata->assertThat(metadata.available()).isFalse());
+        assertThatThrownBy(()->tool.selectScheduleAttachment(draft.operationId(),draft.revision(),file,context()))
+                .isInstanceOf(IllegalStateException.class).hasMessage("File is unavailable");
+        assertThat(store.load(draft.operationId()).revision()).isEqualTo(draft.revision());
+    }
+    @Test void sourceSelectionRejectsUnsubmittedFutureAndCrossConversationIds() {
+        var draft=tool.startScheduleImport(Kind.PAYMENT,context()).state();
+        var staged=stage("Unsubmitted");
+        var later=stage("Future");
+        attachments.bindToMessage(later,message(conversation,AiChatMessageEntityType.USER,"Later"));
+        var another=conversation();
+        var foreign=attachments.stage(another,"other.csv",new ByteArrayInputStream(new byte[0]));
+        attachments.bindToMessage(foreign,message(another,AiChatMessageEntityType.USER,"Different chat"));
+        for (UUID id:List.of(staged,later,foreign)) {
+            assertThatThrownBy(()->tool.selectScheduleAttachment(draft.operationId(),draft.revision(),id,context()))
+                    .isInstanceOf(SecurityException.class);
+        }
+        assertThat(tool.listScheduleAttachments(0,context()).files()).isEmpty();
+    }
+    @Test void laterFileSelectionInvalidatesPreviewAndStaleRetryCannotReadIt() {
+        var initialMessage=message;
+        var first=stage("date;amount\n2026-06-01;120");
+        attachments.bindToMessage(first,initialMessage);
+        var draft=tool.startScheduleImport(Kind.PAYMENT,context()).state();
+        var invalid=tool.applyScheduleMapping(draft.operationId(),draft.revision(),null,context());
+        assertThat(invalid.issues()).isNotEmpty();
+        var mapped=tool.applyScheduleMapping(draft.operationId(),draft.revision(),
+                new ScheduleMappingRequest("csv",BigDecimal.ZERO,BigDecimal.ONE,BigDecimal.ONE,List.of(),null,null),context()).state();
+        var preview=store.markPreviewReady(mapped.operationId(),mapped.revision(),"previous-preview");
+        var nextMessage=message(conversation,AiChatMessageEntityType.USER,"Here is another file");
+        var replacement=stage("date;amount\n2026-06-01;200");
+        attachments.bindToMessage(replacement,nextMessage);
+        message=message(conversation,AiChatMessageEntityType.USER,"Switch to the other file");
+        var revised=tool.selectScheduleAttachment(preview.operationId(),preview.revision(),replacement,context()).state();
+        var updated=store.load(revised.operationId());
+        assertThat(updated.status()).isEqualTo(Status.COLLECTING);
+        assertThat(updated.content().fingerprint()).isNull();
+        assertThat(updated.content().mapping()).isNull();
+        assertThat(updated.content().rows()).isEmpty();
+        assertThat(updated.content().sourceMessageId()).isEqualTo(nextMessage);
+        assertThat(updated.content().requestMessageId()).isEqualTo(message);
+        message=initialMessage;
+        assertThat(tool.startScheduleImport(Kind.PAYMENT,context()).state()).isNull();
+        assertThat(tool.conversationState(conversation)).extracting(ScheduleImportTool.State::operationId)
+                .containsExactly(revised.operationId());
     }
     @Test void actualMessageBindingSurvivesOverlappingSubmissions() {
         UUID file=stage("date;amount\n2026-06-01;120");attachments.bindToMessage(file,message);

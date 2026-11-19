@@ -59,6 +59,22 @@ class ScheduleAiChatDataServiceTest {
         assertThat(text).contains("current-plan.csv", file.toString(), "sizeBytes", "available").doesNotContain("future-plan.csv",future.toString());
         assertThat(data.load(AiScheduleImport.class).all().list().stream().filter(e->owner.equals(e.getOwner()))).isEmpty();
     }
+    @Test void historicalAttachmentAppearsOutsideTextMemoryWithoutReadingCells() {
+        var file=attachments.stage(conversation,"historical-plan.csv",
+                new java.io.ByteArrayInputStream("private file cells".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        attachments.bindToMessage(file,message);
+        var request=message("Use the file I sent earlier");
+        var original=ReflectionTestUtils.getField(service,"dataProperties");
+        try {
+            ReflectionTestUtils.setField(service,"dataProperties",new io.jmix.aitoolsflowuidata.AiToolsFlowuiDataProperties(true,1));
+            var history=service.loadHistory(conversation,data.load(AiChatMessageEntity.class).id(request).one());
+            assertThat(history).extracting(org.springframework.ai.chat.messages.Message::getText)
+                    .anySatisfy(text->assertThat(text).contains(file.toString(),"historical-plan.csv").doesNotContain("private file cells"))
+                    .doesNotContain("current input");
+        } finally {
+            ReflectionTestUtils.setField(service,"dataProperties",original);
+        }
+    }
     String draftId(){return data.load(AiScheduleImport.class).all().list().stream().filter(e->owner.equals(e.getOwner())).findFirst().orElseThrow().getId().toString();}
     @Test void normalChatStillUsesDefaultHistoryAndCallbacks() {
         var updates=new ArrayList<io.jmix.aitools.tool.AiToolStatusUpdate>();
@@ -143,7 +159,9 @@ class ScheduleAiChatDataServiceTest {
             assertThat(service.processMessage(ui,update->{})).isEqualTo("Preview ready");assertThat(calls.get()).isEqualTo(6);assertThat(domainCounts()).isEqualTo(initial);
         }
     }
-    @Test void ordinaryTurnThenOneUploadMapsRealXlsThroughCallbacks() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    void ordinaryTurnThenOneUploadMapsRealXlsThroughCallbacks(boolean historical) throws Exception {
         var ordinary=data.load(AiChatMessageEntity.class).id(message).one();
         ordinary.setContent("Покажи договоры НК НПЗ");data.saveWithoutReload(ordinary);
         byte[] bytes;
@@ -170,12 +188,24 @@ class ScheduleAiChatDataServiceTest {
                         .map(org.springframework.ai.chat.messages.ToolResponseMessage.class::cast).flatMap(m->m.getResponses().stream()).reduce((a,b)->b).orElseThrow();
                 var result=json.readTree(response.responseData());
                 assertThat(result.path("issues").size()).isZero();
-                if(step==3){
+                if (historical && step==2) {
+                    assertThat(result.path("inspection").isNull()).isTrue();
+                    var file=data.load(AiScheduleAttachment.class)
+                            .query("select e from AiScheduleAttachment e where e.originalConversationId=:c")
+                            .parameter("c",conversation).one();
+                    name="selectScheduleAttachment";
+                    arguments.put("operationId",result.path("state").path("operationId").stringValue());
+                    arguments.put("revision",result.path("state").path("revision").asLong());
+                    arguments.put("attachmentId",file.getId());
+                    return new ChatResponse(List.of(new Generation(AssistantMessage.builder().content("").toolCalls(
+                            List.of(new AssistantMessage.ToolCall("file_"+step,"function",name,json.writeValueAsString(arguments)))).build())));
+                }
+                if(step==(historical?4:3)){
                     assertThat(result.path("state").path("rowCount").asInt()).isEqualTo(5);
                     assertThat(result.path("state").path("total").decimalValue()).isEqualByComparingTo("750000.00");
                     return new ChatResponse(List.of(new Generation(new AssistantMessage("Five dates prepared"))));
                 }
-                assertThat(step).isEqualTo(2);
+                assertThat(step).isEqualTo(historical?3:2);
                 assertThat(result.path("state").path("attachment").path("fileName").asText()).isEqualTo("one-upload.xls");
                 var sheets=result.path("inspection").path("sheets");assertThat(sheets.size()).isEqualTo(1);
                 var sheet=sheets.get(0);var sample=sheet.path("sample");
@@ -197,10 +227,11 @@ class ScheduleAiChatDataServiceTest {
         ReflectionTestUtils.setField(service,"chatClient",ChatClient.builder(model).defaultAdvisors(org.springframework.ai.chat.client.advisor.ToolCallingAdvisor.builder().build()).defaultToolContext(Map.of(AiToolStatusPublisher.DEFAULT_TOOL_CONTEXT_MARKER,true)).build());
         var ui=data.create(io.jmix.aitoolsflowui.model.AiChatMessage.class);ui.setId(message);
         assertThat(service.processMessage(ui)).isEqualTo("Contracts listed");
-        message=message("Prepare payment schedule from the attached file");
+        message=message(historical?"Placing the file here for later":"Prepare payment schedule from the attached file");
         var file=attachments.stage(conversation,"one-upload.xls",new java.io.ByteArrayInputStream(bytes));attachments.bindToMessage(file,message);
+        if (historical) message=message("Prepare payment schedule from the earlier file");
         ui.setId(message);assertThat(service.processMessage(ui,update->{})).isEqualTo("Five dates prepared");
-        assertThat(calls.get()).isEqualTo(4);assertThat(domainCounts()).isEqualTo(initial);
+        assertThat(calls.get()).isEqualTo(historical?5:4);assertThat(domainCounts()).isEqualTo(initial);
         var later=message("Continue with contract selection");
         var restored=service.loadHistory(conversation,data.load(AiChatMessageEntity.class).id(later).one());
         assertThat(restored.stream().map(org.springframework.ai.chat.messages.Message::getText)).anySatisfy(text->assertThat(text).contains("one-upload.xls", "750000", "rowCount"));

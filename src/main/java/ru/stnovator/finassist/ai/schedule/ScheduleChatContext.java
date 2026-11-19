@@ -34,10 +34,15 @@ public class ScheduleChatContext {
     /** Same persisted USER ordering as the native request's bounded history. */
     public boolean sourceVisible(UUID sourceMessageId,Submission submission) {
         if(sourceMessageId==null)return true;
-        ownership.userMessage(sourceMessageId,submission.conversationId());
-        ownership.userMessage(submission.userMessageId(),submission.conversationId());
-        var source=message(sourceMessageId);var current=message(submission.userMessageId());
-        int order=source.getCreatedDate().compareTo(current.getCreatedDate());
+        var source=ownership.userMessage(sourceMessageId,submission.conversationId());
+        var current=ownership.userMessage(submission.userMessageId(),submission.conversationId());
+        return atOrBefore(source,current);
+    }
+    static boolean atOrBefore(AiChatMessageEntity source,AiChatMessageEntity current) {
+        var sourceTime=source.getCreatedDate();
+        var currentTime=current.getCreatedDate();
+        if (sourceTime==null || currentTime==null) return false;
+        int order=sourceTime.toInstant().compareTo(currentTime.toInstant());
         return order<0 || order==0 && source.getId().toString().compareTo(current.getId().toString())<=0;
     }
     private AiChatMessageEntity message(UUID id) {
