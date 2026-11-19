@@ -162,4 +162,70 @@ class ScheduleConversationConfirmationServiceTest {
         }
         fixtures.assertRows(fixtures.items(Kind.PAYMENT, fixtures.fixture.payment.getId(), false));
     }
+
+    @Test void distinctCapturedAffirmativesCommittedOnce() throws Exception {
+        var p = fixtures.preview(Kind.PAYMENT, Mode.FILL);
+        UUID proposal = publish(p);
+        UUID a = reply(proposal, p.revision(), "Да");
+        UUID b = reply(proposal, p.revision(), "Да, применить");
+        try (var pool = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var start = new java.util.concurrent.CountDownLatch(1);
+            java.util.function.Function<UUID, java.util.concurrent.Callable<UUID>> handler = id -> () -> {
+                fixtures.login();
+                try {
+                    start.await();
+                    return service.handleReply(fixtures.conversation, id).result().entityId();
+                } finally {
+                    org.springframework.security.core.context.SecurityContextHolder.clearContext();
+                }
+            };
+            var first = pool.submit(handler.apply(a));
+            var second = pool.submit(handler.apply(b));
+            start.countDown();
+            assertThat(first.get(20, java.util.concurrent.TimeUnit.SECONDS)).isEqualTo(second.get(20, java.util.concurrent.TimeUnit.SECONDS));
+        }
+        fixtures.assertRows(fixtures.items(Kind.PAYMENT, fixtures.fixture.payment.getId(), false));
+    }
+
+    @Test void discussionBetweenTwoAffirmativesRequiresFreshProposal() {
+        var p = fixtures.preview(Kind.PAYMENT, Mode.FILL);
+        UUID proposal = publish(p);
+        UUID first = reply(proposal, p.revision(), "Да");
+        reply(proposal, p.revision(), "А что изменится?");
+        UUID last = reply(proposal, p.revision(), "Да");
+        assertThat(service.handleReply(fixtures.conversation, last).outcome()).isEqualTo(STALE);
+        assertThat(service.handleReply(fixtures.conversation, first).outcome()).isEqualTo(STALE);
+        fixtures.assertPending(p);
+    }
+
+    @Test void mutatedRefusalCannotConfirm() {
+        var p = fixtures.preview(Kind.PAYMENT, Mode.FILL);
+        UUID user = reply(publish(p), p.revision(), "Нет");
+        var message = data.load(AiChatMessageEntity.class).id(user).one();
+        message.setContent("Да");
+        data.saveWithoutReload(message);
+        assertThat(service.handleReply(fixtures.conversation, user).outcome()).isEqualTo(STALE);
+        fixtures.assertPending(p);
+    }
+
+    @Test void retainedUserReceiptSurvivesAssistantDeletion() {
+        var p = fixtures.preview(Kind.PAYMENT, Mode.FILL);
+        UUID proposal = publish(p);
+        UUID user = reply(proposal, p.revision(), "Да");
+        var result = service.handleReply(fixtures.conversation, user).result();
+        data.remove(data.load(AiChatMessageEntity.class).id(proposal).one());
+        assertThat(service.handleReply(fixtures.conversation, user).result().entityId()).isEqualTo(result.entityId());
+        var other = data.create(AiConversationEntity.class);
+        other.setUsername(fixtures.owner);
+        other.setTitle("Other conversation");
+        var saved = data.save(other);
+        try {
+            var moved = data.load(AiChatMessageEntity.class).id(user).one();
+            moved.setConversation(saved);
+            data.saveWithoutReload(moved);
+            assertThatThrownBy(() -> service.handleReply(saved.getId(), user)).isInstanceOf(SecurityException.class);
+        } finally {
+            data.remove(saved);
+        }
+    }
 }

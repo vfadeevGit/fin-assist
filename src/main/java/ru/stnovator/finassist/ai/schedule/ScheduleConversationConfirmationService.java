@@ -3,6 +3,7 @@ package ru.stnovator.finassist.ai.schedule;
 import io.jmix.aitoolsflowuidata.entity.AiChatMessageEntity;
 import io.jmix.aitoolsflowuidata.entity.AiChatMessageEntityType;
 import io.jmix.core.UnconstrainedDataManager;
+import jakarta.persistence.LockModeType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,6 +14,8 @@ import ru.stnovator.finassist.entity.AiScheduleImport;
 
 import javax.sql.DataSource;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.ConcurrentModificationException;
 import java.util.Objects;
 import java.util.Optional;
@@ -29,7 +32,7 @@ public class ScheduleConversationConfirmationService {
         ReplyOutcome(Outcome outcome) { this(outcome, null); }
     }
     public record Proposal(UUID messageId, UUID operationId, long revision, String fingerprint) {}
-    private record Observation(UUID proposalId, Long revision, String outcome) {}
+    private record Observation(UUID proposalId, Long revision, String outcome, UUID appliedOperation, boolean contentMatches) {}
     private final JdbcTemplate jdbc;
     private final TransactionTemplate reserveConsent;
     private final UnconstrainedDataManager data;
@@ -74,13 +77,15 @@ public class ScheduleConversationConfirmationService {
     /** Capture once, including absence; retries cannot substitute a newer observation. */
     public void captureObservation(UUID conversationId, UUID userMessageId, UUID observedProposalId, Long observedRevision) {
         lockConversation(conversationId);
-        message(conversationId, userMessageId, USER);
-        insertObservation(userMessageId, observedProposalId, observedRevision);
+        var user = message(conversationId, userMessageId, USER);
+        insertObservation(user, observedProposalId, observedRevision);
     }
 
-    private void insertObservation(UUID userMessageId, UUID observedProposalId, Long observedRevision) {
-        jdbc.update("insert into ai_schedule_reply(message_id,proposal_id,revision) values(?,?,?) on conflict(message_id) do nothing",
-                userMessageId, observedProposalId, observedRevision);
+    private void insertObservation(AiChatMessageEntity user, UUID observedProposalId, Long observedRevision) {
+        jdbc.update("""
+                insert into ai_schedule_reply(message_id,proposal_id,revision,submitted_digest)
+                values(?,?,?,sha256(convert_to(?, 'UTF8'))) on conflict(message_id) do nothing
+                """, user.getId(), observedProposalId, observedRevision, user.getContent());
     }
 
     public Optional<Proposal> pendingProposal(UUID conversationId) {
@@ -91,34 +96,53 @@ public class ScheduleConversationConfirmationService {
     public ReplyOutcome handleReply(UUID conversationId, UUID userMessageId) {
         lockConversation(conversationId);
         var user = message(conversationId, userMessageId, USER);
-        insertObservation(userMessageId, null, null);
-        var observation = jdbc.queryForObject("select proposal_id, revision, outcome from ai_schedule_reply where message_id=?",
-                (rs, n) -> new Observation(rs.getObject(1, UUID.class), rs.getObject(2, Long.class), rs.getString(3)), userMessageId);
+        insertObservation(user, null, null);
+        var observation = jdbc.queryForObject("""
+                select proposal_id, revision, outcome, applied_operation_id, submitted_digest=sha256(convert_to(?, 'UTF8'))
+                from ai_schedule_reply where message_id=?
+                """, (rs, n) -> new Observation(rs.getObject(1, UUID.class), rs.getObject(2, Long.class), rs.getString(3),
+                rs.getObject(4, UUID.class), rs.getBoolean(5)), user.getContent(), userMessageId);
         if (observation.outcome() != null) {
             var recorded = Outcome.valueOf(observation.outcome());
             if (recorded != Outcome.APPLIED) return new ReplyOutcome(recorded);
-            UUID operation = jdbc.queryForObject("select operation_id from ai_schedule_proposal where message_id=? and conversation_id=?",
-                    UUID.class, observation.proposalId(), conversationId);
-            return new ReplyOutcome(Outcome.APPLIED, commits.confirm(operation, observation.revision()));
+            if (observation.appliedOperation() == null) return new ReplyOutcome(Outcome.STALE);
+            var receipt = store.load(observation.appliedOperation());
+            if (!receipt.conversationId().equals(conversationId) || receipt.status() != ScheduleImportStore.Status.SAVED)
+                throw new SecurityException("Confirmation receipt is unavailable");
+            return new ReplyOutcome(Outcome.APPLIED, commits.confirm(receipt.operationId(), observation.revision()));
         }
         ReplyOutcome result = pending(conversationId)
                 .map(proposal -> process(conversationId, user, observation, proposal))
                 .orElseGet(() -> new ReplyOutcome(observation.proposalId() == null ? Outcome.NONE : Outcome.STALE));
-        jdbc.update("update ai_schedule_reply set outcome=? where message_id=?", result.outcome().name(), userMessageId);
+        recordOutcome(userMessageId, result);
         return result;
+    }
+
+    private void recordOutcome(UUID userId, ReplyOutcome result) {
+        jdbc.update("update ai_schedule_reply set outcome=?, applied_operation_id=? where message_id=?", result.outcome().name(),
+                result.result() == null ? null : result.result().operationId(), userId);
     }
 
     private ReplyOutcome process(UUID conversationId, AiChatMessageEntity user, Observation observation, Proposal proposal) {
         var assistant = message(conversationId, proposal.messageId(), ASSISTANT);
         if (!Objects.requireNonNull(assistant.getCreatedDate()).isBefore(user.getCreatedDate())) return new ReplyOutcome(Outcome.STALE);
-        if (!Objects.equals(observation.proposalId(), proposal.messageId())
-                || !Objects.equals(observation.revision(), proposal.revision()) || !matchesDraft(proposal)
-                || laterUserExists(conversationId, user) || interveningMessage(conversationId, assistant, user)) {
+        if (!observation.contentMatches() || !Objects.equals(observation.proposalId(), proposal.messageId())
+                || !Objects.equals(observation.revision(), proposal.revision()) || !matchesDraft(proposal)) {
             retire(conversationId);
             return new ReplyOutcome(Outcome.STALE);
         }
         var intent = ScheduleConfirmationReplyClassifier.classify(user.getContent());
-        if (intent == ScheduleConfirmationReplyClassifier.Intent.ACCEPT) return apply(proposal);
+        var duplicates = duplicateAffirmatives(conversationId, assistant, user, proposal.revision());
+        boolean accepted = intent == ScheduleConfirmationReplyClassifier.Intent.ACCEPT;
+        if (duplicates.isEmpty() || (!accepted && !duplicates.get().isEmpty())) {
+            retire(conversationId);
+            return new ReplyOutcome(Outcome.STALE);
+        }
+        if (accepted) {
+            var result = apply(proposal);
+            duplicates.get().forEach(id -> recordOutcome(id, result));
+            return result;
+        }
         retire(conversationId);
         if (intent == ScheduleConfirmationReplyClassifier.Intent.DECLINE) {
             store.cancel(proposal.operationId(), proposal.revision());
@@ -151,7 +175,7 @@ public class ScheduleConversationConfirmationService {
     }
 
     private AiChatMessageEntity message(UUID conversationId, UUID id, AiChatMessageEntityType type) {
-        var m = data.load(AiChatMessageEntity.class).id(id).optional()
+        var m = data.load(AiChatMessageEntity.class).id(id).lockMode(LockModeType.PESSIMISTIC_READ).optional()
                 .orElseThrow(() -> new SecurityException("Message is unavailable"));
         if (!conversationId.equals(m.getConversation().getId()) || m.getType() != type
                 || m.getCreatedDate() == null || m.getCreatedDate().isAfter(OffsetDateTime.now())
@@ -166,18 +190,28 @@ public class ScheduleConversationConfirmationService {
                 conversationId).stream().findFirst();
     }
 
-    private boolean laterUserExists(UUID conversationId, AiChatMessageEntity message) {
-        return Boolean.TRUE.equals(jdbc.queryForObject("""
-                select exists(select 1 from aitls_ai_chat_message_entity
-                where conversation_id=? and type_=? and created_date>=? and id<>?)
-                """, Boolean.class, conversationId, USER.getId(), message.getCreatedDate(), message.getId()));
-    }
-
-    private boolean interveningMessage(UUID conversationId, AiChatMessageEntity proposal, AiChatMessageEntity user) {
-        return Boolean.TRUE.equals(jdbc.queryForObject("""
-                select exists(select 1 from aitls_ai_chat_message_entity where conversation_id=?
-                and created_date between ? and ? and id not in (?,?))
-                """, Boolean.class, conversationId, proposal.getCreatedDate(), user.getCreatedDate(), proposal.getId(), user.getId()));
+    /** A discussion breaks the link. Independently captured, identical-in-intent consents may share a receipt. */
+    private Optional<List<UUID>> duplicateAffirmatives(UUID conversationId, AiChatMessageEntity assistant,
+            AiChatMessageEntity user, long revision) {
+        return jdbc.query("""
+                select m.id, m.content,
+                       (m.type_=? and m.created_by=? and m.created_date>? and m.created_date<=clock_timestamp()
+                        and r.proposal_id=? and r.revision=? and r.outcome is null
+                        and r.submitted_digest=sha256(convert_to(m.content,'UTF8'))) as eligible
+                from aitls_ai_chat_message_entity m left join ai_schedule_reply r on r.message_id=m.id
+                where m.conversation_id=? and m.id not in (?,?) and m.created_date>=?
+                  and (m.created_date<=? or m.type_=?)
+                for share of m
+                """, rs -> {
+                    List<UUID> duplicates = new ArrayList<>();
+                    while (rs.next()) {
+                        if (!rs.getBoolean("eligible") || ScheduleConfirmationReplyClassifier.classify(rs.getString("content"))
+                                != ScheduleConfirmationReplyClassifier.Intent.ACCEPT) return Optional.empty();
+                        duplicates.add(rs.getObject("id", UUID.class));
+                    }
+                    return Optional.of(duplicates);
+                }, USER.getId(), ownership.username(), assistant.getCreatedDate(), assistant.getId(), revision,
+                conversationId, assistant.getId(), user.getId(), assistant.getCreatedDate(), user.getCreatedDate(), USER.getId());
     }
 
     private void retire(UUID conversationId) {

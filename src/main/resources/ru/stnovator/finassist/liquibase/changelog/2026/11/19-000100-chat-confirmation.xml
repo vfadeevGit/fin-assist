@@ -16,4 +16,12 @@
             );
         </sql>
     </changeSet>
+    <changeSet author="finassist" id="chat-confirmation-2">
+        <sql>
+            alter table ai_schedule_reply add column submitted_digest bytea;
+            alter table ai_schedule_reply add column applied_operation_id uuid;
+            update ai_schedule_reply r set applied_operation_id=p.operation_id
+                from ai_schedule_proposal p where r.proposal_id=p.message_id and r.outcome='APPLIED';
+        </sql>
+    </changeSet>
 </databaseChangeLog>

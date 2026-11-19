@@ -35,7 +35,13 @@ class ScheduleConfirmationMigrationTest {
                     jdbc.update("insert into ai_schedule_import values (?, 'PREVIEW_READY', null), (?, 'SAVED', ?)",
                             UUID.randomUUID(), UUID.randomUUID(), resultId);
                 }
-                var migration = new SpringLiquibase();
+                // Exercise the original W1 schema first, including its recorded Liquibase checksum.
+                var migration = new SpringLiquibase() {
+                    @Override
+                    protected void performUpdate(liquibase.Liquibase liquibase) throws liquibase.exception.LiquibaseException {
+                        liquibase.update(1, new liquibase.Contexts(), new liquibase.LabelExpression());
+                    }
+                };
                 migration.setDataSource(isolated);
                 migration.setDefaultSchema(schema);
                 migration.setLiquibaseSchema(schema);
@@ -43,7 +49,21 @@ class ScheduleConfirmationMigrationTest {
                 migration.afterPropertiesSet();
                 assertThat(jdbc.queryForObject("select count(*) from ai_schedule_proposal", Integer.class)).isZero();
                 assertThat(jdbc.queryForObject("select count(*) from ai_schedule_reply", Integer.class)).isZero();
+                UUID operation = jdbc.query("select id from ai_schedule_import where import_status='SAVED'",
+                        rs -> rs.next() ? rs.getObject(1, UUID.class) : null);
+                UUID user = UUID.randomUUID();
                 if (legacy) {
+                    UUID proposal = UUID.randomUUID();
+                    UUID conversation = UUID.randomUUID();
+                    jdbc.update("insert into aitls_ai_conversation_entity values (?)", conversation);
+                    jdbc.update("insert into aitls_ai_chat_message_entity values (?), (?)", proposal, user);
+                    jdbc.update("insert into ai_schedule_proposal values(?,?,?,?,?,false)", proposal, conversation, operation, 5, "digest");
+                    jdbc.update("insert into ai_schedule_reply values(?,?,?,?)", user, proposal, 5, "APPLIED");
+                }
+                migration.afterPropertiesSet();
+                if (legacy) {
+                    assertThat(jdbc.queryForObject("select applied_operation_id from ai_schedule_reply where message_id=?", UUID.class, user))
+                            .isEqualTo(operation);
                     assertThat(jdbc.queryForObject("select count(*) from ai_schedule_import", Integer.class)).isEqualTo(2);
                     assertThat(jdbc.queryForObject("select result_id from ai_schedule_import where import_status='SAVED'", UUID.class)).isEqualTo(resultId);
                 }
