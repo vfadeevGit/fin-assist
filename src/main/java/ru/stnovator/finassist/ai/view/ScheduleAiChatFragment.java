@@ -23,6 +23,8 @@ public class ScheduleAiChatFragment extends AiChatFragment {
     @Autowired
     private ScheduleAttachmentService attachments;
     @Autowired
+    private ScheduleImportStore store;
+    @Autowired
     private ScheduleConversationConfirmationService confirmations;
     @Autowired
     private Messages messages;
@@ -96,7 +98,7 @@ public class ScheduleAiChatFragment extends AiChatFragment {
         }
         conversationFiles.setSummaryText(messages.formatMessage(group, "scheduleImport.conversationFiles", page.totalCount()));
         page.files().forEach(file -> conversationFileList.add(
-                ScheduleAttachmentCard.submitted(messages, attachments, conversationId, file, true)));
+                ScheduleAttachmentCard.submitted(messages, attachments, store, conversationId, file, true)));
         if (page.totalCount() == 0) {
             conversationFileList.add(new Span(messages.getMessage(group, "scheduleImport.noConversationFiles")));
         }

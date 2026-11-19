@@ -85,6 +85,8 @@ class ScheduleImportUiTest {
 
     @BeforeEach
     void setup() {
+        when(store.attachmentProcessing(any(UUID.class), any(UUID.class), any(UUID.class)))
+                .thenReturn(new AttachmentProcessing(AttachmentStage.ATTACHED, null, null, null, null, 0, null, null));
         when(attachments.listSubmitted(any(UUID.class), anyInt()))
                 .thenReturn(new ScheduleAttachmentService.SubmittedPage(List.of(), 0, null));
         var rows = java.util.stream.IntStream.range(0, 150).mapToObj(i -> new Row(LocalDate.of(2027, 1, 1).plusDays(i), new BigDecimal("12.34"))).toList();
@@ -315,10 +317,7 @@ class ScheduleImportUiTest {
                 navigators.view(UiTestUtils.getCurrentView(), AiChatView.class)
                         .withRouteParameters(new com.vaadin.flow.router.RouteParameters("id", chat.getId().toString())).navigate();
                 var fragment = (ScheduleAiChatFragment) UiTestUtils.getComponent(UiTestUtils.getCurrentView(), "chatFragment");
-                var overview = fragment.getContent().getChildren().flatMap(com.vaadin.flow.component.Component::getChildren)
-                        .flatMap(com.vaadin.flow.component.Component::getChildren)
-                        .filter(c -> c.getId().orElse("").equals("scheduleConversationFiles"))
-                        .map(com.vaadin.flow.component.details.Details.class::cast).findFirst().orElse(null);
+                var overview = conversationFileOverview(fragment);
                 assertThat(overview).isNotNull();
                 assertThat(overview.isOpened()).isFalse();
                 assertThat(overview.getSummaryText()).endsWith(" · 2");
@@ -360,7 +359,27 @@ class ScheduleImportUiTest {
                 assertSentBadge(fragment,actual,pending.fileName());
                 org.springframework.test.util.ReflectionTestUtils.invokeMethod(fragment,"handleAssistantResponseDone",(Object)null);
                 assertSentBadge(fragment,chatMessages.loadMessages(chat).iterator().next(),pending.fileName());
+                var file = new ScheduleAttachmentService.SubmittedAttachment(pending.id(), pending.fileName(),
+                        pending.sizeBytes(), true, actual.getId(), null);
+                when(attachments.listSubmitted(chat.getId(), 0))
+                        .thenReturn(new ScheduleAttachmentService.SubmittedPage(List.of(file), 1, null));
+                var requestAt = java.time.OffsetDateTime.parse("2026-11-19T09:00:00+03:00");
+                when(store.attachmentProcessing(chat.getId(), pending.id(), actual.getId()))
+                        .thenReturn(new AttachmentProcessing(AttachmentStage.PARSED, operation, actual.getId(), requestAt,
+                                Kind.PAYMENT, 2, new BigDecimal("120.00"), null));
                 fragment.setConversation(chat);
+                var overview = conversationFileOverview(fragment);
+                overview.setOpened(true);
+                assertThat(overview.getElement().getTextRecursively()).contains("График распознан", "120", "График оплат");
+                var processed = fragments.create(fragment, io.jmix.aitoolsflowui.view.chat.renderer.TimelineItemRenderer.class);
+                processed.setItem(timelineFactory.createUserItem(actual));
+                assertThat(processed.getContent().getElement().getTextRecursively()).contains("График распознан", "120");
+                when(store.attachmentProcessing(chat.getId(), pending.id(), actual.getId()))
+                        .thenReturn(new AttachmentProcessing(AttachmentStage.ERROR, operation, actual.getId(), requestAt,
+                                Kind.PAYMENT, 0, null, "INVALID_AMOUNT"));
+                fragment.setConversation(chat);
+                assertThat(overview.getElement().getTextRecursively()).contains("некорректная сумма")
+                        .doesNotContain("График распознан");
                 assertSentBadge(fragment,chatMessages.loadMessages(chat).iterator().next(),pending.fileName());
                 when(attachments.forMessage(chat.getId(), actual.getId())).thenReturn(List.of(
                         new ScheduleAttachmentService.SubmittedAttachment(pending.id(), pending.fileName(),
@@ -373,6 +392,13 @@ class ScheduleImportUiTest {
             } finally {conversations.remove(chat);}
         });
     }
+    private com.vaadin.flow.component.details.Details conversationFileOverview(ScheduleAiChatFragment fragment) {
+        return fragment.getContent().getChildren().flatMap(com.vaadin.flow.component.Component::getChildren)
+                .flatMap(com.vaadin.flow.component.Component::getChildren)
+                .filter(component -> component.getId().orElse("").equals("scheduleConversationFiles"))
+                .map(com.vaadin.flow.component.details.Details.class::cast).findFirst().orElseThrow();
+    }
+
     void assertSentBadge(ScheduleAiChatFragment fragment,io.jmix.aitoolsflowui.model.AiChatMessage message,String name) {
         var renderer=fragments.create(fragment,io.jmix.aitoolsflowui.view.chat.renderer.TimelineItemRenderer.class);
         renderer.setItem(timelineFactory.createUserItem(message));

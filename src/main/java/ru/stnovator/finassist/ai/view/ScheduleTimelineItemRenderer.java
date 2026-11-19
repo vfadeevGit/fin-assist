@@ -48,7 +48,7 @@ public class ScheduleTimelineItemRenderer extends TimelineItemRenderer {
         }
         if (item.getType() != TimelineItemType.USER) return;
         for (var attachment : attachments.forMessage(message.getConversation().getId(), message.getId())) {
-            var card = ScheduleAttachmentCard.submitted(messages, attachments,
+            var card = ScheduleAttachmentCard.submitted(messages, attachments, store,
                     message.getConversation().getId(), attachment, false);
             decorations.add(card);
             getContent().add(card);

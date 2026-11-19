@@ -13,6 +13,11 @@ import io.jmix.core.FileStorageException;
 import io.jmix.core.Messages;
 import ru.stnovator.finassist.ai.schedule.ScheduleAttachmentService;
 import ru.stnovator.finassist.ai.schedule.ScheduleAttachmentService.SubmittedAttachment;
+import ru.stnovator.finassist.ai.schedule.ScheduleImportStore;
+import ru.stnovator.finassist.ai.schedule.ScheduleImportStore.AttachmentProcessing;
+import ru.stnovator.finassist.ai.schedule.ScheduleImportTypes.Kind;
+
+import java.text.NumberFormat;
 
 import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
@@ -32,7 +37,7 @@ final class ScheduleAttachmentCard extends Div {
     }
 
     static ScheduleAttachmentCard submitted(Messages messages, ScheduleAttachmentService attachments,
-                                             UUID conversationId, SubmittedAttachment file, boolean showSubmittedAt) {
+                                             ScheduleImportStore store, UUID conversationId, SubmittedAttachment file, boolean showSubmittedAt) {
         var card = new ScheduleAttachmentCard(messages, file.fileName(), file.sizeBytes());
         card.addClassName("schedule-sent-attachment");
         if (file.sourceMessageId() != null) {
@@ -43,7 +48,11 @@ final class ScheduleAttachmentCard extends Div {
                     .withLocale(UI.getCurrent().getLocale()).format(file.submittedAt());
             card.add(new Span(time));
         }
-        card.add(new Span(messages.getMessage(GROUP, "scheduleImport.attachmentSent")));
+        if (file.sourceMessageId() == null) {
+            card.add(new Span(messages.getMessage(GROUP, "scheduleImport.attachmentSent")));
+        } else {
+            card.addProcessing(messages, store.attachmentProcessing(conversationId, file.id(), file.sourceMessageId()));
+        }
         if (file.available() && file.sourceMessageId() != null) {
             var handler = DownloadHandler.fromInputStream(event -> {
                 event.getResponse().setHeader("Cache-Control", "private, no-store");
@@ -62,5 +71,58 @@ final class ScheduleAttachmentCard extends Div {
             card.add(new Span(messages.getMessage(GROUP, "scheduleImport.attachmentUnavailable")));
         }
         return card;
+    }
+
+    private void addProcessing(Messages messages, AttachmentProcessing processing) {
+        var locale = UI.getCurrent().getLocale();
+        var status = switch (processing.stage()) {
+            case ATTACHED -> messages.getMessage(GROUP, "scheduleImport.attachmentSent");
+            case NEEDS_SHEET -> messages.getMessage(GROUP, "scheduleImport.attachmentNeedsSheet");
+            case NEEDS_COLUMNS -> messages.getMessage(GROUP, "scheduleImport.attachmentNeedsColumns");
+            case PARSED -> {
+                var number = NumberFormat.getNumberInstance(locale);
+                number.setMinimumFractionDigits(2);
+                number.setMaximumFractionDigits(2);
+                yield messages.formatMessage(GROUP, "scheduleImport.attachmentParsed",
+                        processing.rowCount(), number.format(processing.total()));
+            }
+            case ERROR -> messages.formatMessage(GROUP, "scheduleImport.attachmentError",
+                    messages.getMessage(GROUP, errorKey(processing.issueCode())));
+        };
+        var label = new Span(status);
+        label.addClassName("schedule-attachment-status");
+        add(label);
+        if (processing.operationId() != null) {
+            getElement().setAttribute("data-operation-id", processing.operationId().toString());
+            var time = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)
+                    .withLocale(locale).format(processing.requestedAt());
+            var kind = messages.getMessage(GROUP, processing.kind() == Kind.PAYMENT
+                    ? "scheduleImport.attachmentPayment" : "scheduleImport.attachmentShipment");
+            var operation = new Span(messages.formatMessage(GROUP, "scheduleImport.attachmentOperation", kind, time));
+            operation.addClassName("schedule-attachment-detail");
+            add(operation);
+        }
+    }
+
+    private static String errorKey(String code) {
+        return switch (code) {
+            case "FILE_UNAVAILABLE" -> "scheduleImport.attachmentErrorUnavailable";
+            case "INVALID_WORKBOOK" -> "scheduleImport.attachmentErrorWorkbook";
+            case "CSV_INVALID" -> "scheduleImport.attachmentErrorCsv";
+            case "FILE_LIMIT", "ROW_LIMIT", "COLUMN_LIMIT", "CELL_LIMIT" -> "scheduleImport.attachmentErrorLimit";
+            case "UNSUPPORTED_FILE_TYPE" -> "scheduleImport.attachmentErrorFileType";
+            case "SHEET_REQUIRED" -> "scheduleImport.attachmentErrorSheet";
+            case "INVALID_MAPPING", "INVALID_EXCLUDED_ROW" -> "scheduleImport.attachmentErrorMapping";
+            case "INVALID_PARSE_OPTIONS" -> "scheduleImport.attachmentErrorFormat";
+            case "NO_DATA_ROWS" -> "scheduleImport.attachmentErrorEmpty";
+            case "INVALID_DATE" -> "scheduleImport.attachmentErrorDate";
+            case "INVALID_AMOUNT" -> "scheduleImport.attachmentErrorAmount";
+            case "NON_POSITIVE_AMOUNT" -> "scheduleImport.attachmentErrorPositive";
+            case "AMOUNT_SCALE" -> "scheduleImport.attachmentErrorScale";
+            case "AMOUNT_OVERFLOW" -> "scheduleImport.attachmentErrorOverflow";
+            case "FORMULA_REQUIRES_CORRECTION" -> "scheduleImport.attachmentErrorFormula";
+            case "CELL_REQUIRES_CORRECTION" -> "scheduleImport.attachmentErrorCell";
+            default -> "scheduleImport.attachmentErrorRead";
+        };
     }
 }

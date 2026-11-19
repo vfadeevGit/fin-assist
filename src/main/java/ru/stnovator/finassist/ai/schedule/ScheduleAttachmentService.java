@@ -88,7 +88,7 @@ public class ScheduleAttachmentService {
         attachment.setFileName(fileName);attachment.setFileRef(ref);attachment.setSizeBytes((long)bytes.length);
         return data.save(attachment).getId();
     }
-    @Transactional
+    @Transactional(noRollbackFor = FileStorageException.class)
     public InputStream open(UUID attachmentId) {
         var attachment=owned(attachmentId);
         if(attachment.getFileDeletedAt()!=null || attachment.getRemovalRequestedAt()!=null) throw new IllegalStateException("File is unavailable");
@@ -142,6 +142,10 @@ public class ScheduleAttachmentService {
         var attachment=readOwned(attachmentId);
         var message = verifySubmission(attachment, conversationId, userMessageId);
         return metadata(attachment, message.getCreatedDate());
+    }
+
+    void verifySubmission(UUID attachmentId, UUID conversationId, UUID sourceMessageId) {
+        verifySubmission(readOwned(attachmentId), conversationId, sourceMessageId);
     }
 
     private AiChatMessageEntity verifySubmission(AiScheduleAttachment attachment, UUID conversationId, UUID userMessageId) {

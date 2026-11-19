@@ -28,7 +28,7 @@ class ScheduleImportToolTest {
     @Autowired UnconstrainedDataManager data;
     @Autowired DataManager secured;
     @Autowired SystemAuthenticator auth;
-    @Autowired FileStorageLocator storages;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean FileStorageLocator storages;
     @org.springframework.test.context.bean.override.mockito.MockitoSpyBean ScheduleChatContext chatContext;
     RelatedFixtures fixture;
     final String owner="tool-"+UUID.randomUUID();
@@ -237,6 +237,115 @@ class ScheduleImportToolTest {
         var rejected=tool.applyScheduleMapping(result.state().operationId(),result.state().revision(),mapping,context());
         assertThat(rejected.issues()).isNotEmpty();assertThat(counts()).isEqualTo(before);
     }
+    @Test void attachmentProcessingUsesOnlyTheMostRecentRequestForTheSelectedFile() {
+        var original = message;
+        var file = stage("date;amount\n2026-06-01;100\n2026-06-01;20");
+        attachments.bindToMessage(file, original);
+        assertThat(store.attachmentProcessing(conversation, file, original).stage().name()).isEqualTo("ATTACHED");
+        var first = tool.startScheduleImport(Kind.PAYMENT, context()).state();
+        assertThat(store.attachmentProcessing(conversation, file, original).stage().name()).isEqualTo("NEEDS_COLUMNS");
+        var mapping = new ScheduleMappingRequest("csv", BigDecimal.ZERO, BigDecimal.ONE, BigDecimal.ONE, List.of(), null, null);
+        var parsed = tool.applyScheduleMapping(first.operationId(), first.revision(), mapping, context()).state();
+
+        var processing = store.attachmentProcessing(conversation, file, original);
+        assertThat(processing.stage().name()).isEqualTo("PARSED");
+        assertThat(processing.operationId()).isEqualTo(first.operationId());
+        assertThat(processing.rowCount()).isEqualTo(1);
+        assertThat(processing.total()).isEqualByComparingTo("120");
+        assertThat(store.load(parsed.operationId()).status()).isEqualTo(Status.COLLECTING);
+
+        message = message(conversation, AiChatMessageEntityType.USER, "Use the file for shipment now");
+        var other = tool.startScheduleImport(Kind.SHIPMENT, context()).state();
+        other = tool.selectScheduleAttachment(other.operationId(), other.revision(), file, context()).state();
+        processing = store.attachmentProcessing(conversation, file, original);
+        assertThat(processing.stage().name()).isEqualTo("NEEDS_COLUMNS");
+        assertThat(processing.operationId()).isEqualTo(other.operationId());
+        assertThat(processing.requestMessageId()).isEqualTo(message);
+
+        var badMapping = new ScheduleMappingRequest("missing-sheet", BigDecimal.ZERO, BigDecimal.ONE, BigDecimal.ONE, List.of(), null, null);
+        tool.applyScheduleMapping(other.operationId(), other.revision(), badMapping, context());
+        processing = store.attachmentProcessing(conversation, file, original);
+        assertThat(processing.stage().name()).isEqualTo("ERROR");
+        assertThat(processing.operationId()).isEqualTo(other.operationId());
+        assertThat(processing.issueCode()).isNotBlank();
+        assertThat(attachments.boundMetadata(file, conversation, original).available()).isTrue();
+
+        tool.applyScheduleMapping(other.operationId(), other.revision(), mapping, context());
+        var latest = store.attachmentProcessing(conversation, file, original);
+        assertThat(latest.stage()).isEqualTo(ScheduleImportStore.AttachmentStage.PARSED);
+
+        message = original;
+        tool.applyScheduleMapping(parsed.operationId(), parsed.revision(), badMapping, context());
+        assertThat(store.attachmentProcessing(conversation, file, original)).isEqualTo(latest);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"wrong-date,120,INVALID_DATE", "2026-06-01,wrong-amount,INVALID_AMOUNT"})
+    void attachmentProcessingPersistsNormalizationFailure(String date, String amount, String issue) {
+        var file = stage("date;amount\n" + date + ";" + amount);
+        attachments.bindToMessage(file, message);
+        var started = tool.startScheduleImport(Kind.PAYMENT, context()).state();
+        var mapping = new ScheduleMappingRequest("csv", BigDecimal.ZERO, BigDecimal.ONE, BigDecimal.ONE, List.of(), null, null);
+        var result = tool.applyScheduleMapping(started.operationId(), started.revision(), mapping, context());
+        assertThat(result.issues()).extracting(Issue::code).contains(issue);
+        var status = store.attachmentProcessing(conversation, file, message);
+        assertThat(status.stage()).isEqualTo(ScheduleImportStore.AttachmentStage.ERROR);
+        assertThat(status.issueCode()).isEqualTo(issue);
+        assertThat(status.total()).isNull();
+        assertThat(store.load(started.operationId()).content().rows()).isEmpty();
+    }
+
+    @Test void attachmentStorageFailureCommitsProcessingErrorThroughTransactionalService() {
+        var file = stage("date;amount\n2026-06-01;120");
+        attachments.bindToMessage(file, message);
+        var started = tool.startScheduleImport(Kind.PAYMENT, context()).state();
+        var ref = data.load(AiScheduleAttachment.class).id(file).one().getFileRef();
+        var storage = storages.getByName(ref.getStorageName());
+        var failingStorage = org.mockito.Mockito.mock(FileStorage.class);
+        org.mockito.Mockito.when(failingStorage.openStream(ref))
+                .thenThrow(new FileStorageException(FileStorageException.Type.FILE_NOT_FOUND, "storage-only-diagnostic"));
+        // Availability uses the real getAll() result. Inject the missing payload at the stream boundary.
+        org.mockito.Mockito.doReturn(failingStorage).when(storages).getByName(ref.getStorageName());
+        try {
+            assertThat(attachments.boundMetadata(file, conversation, message).available()).isTrue();
+            var result = tool.inspectScheduleAttachment(started.operationId(), started.revision(), context());
+            assertThat(result.issues()).containsExactly(new Issue("file", "FILE_READ_FAILED"));
+        } finally {
+            org.mockito.Mockito.doReturn(storage).when(storages).getByName(ref.getStorageName());
+        }
+        var status = store.attachmentProcessing(conversation, file, message);
+        assertThat(status.stage()).isEqualTo(ScheduleImportStore.AttachmentStage.ERROR);
+        assertThat(status.issueCode()).isEqualTo("FILE_READ_FAILED");
+        assertThat(store.load(started.operationId()).revision()).isEqualTo(started.revision());
+    }
+
+    @Test void attachmentInspectionPersistsWorksheetClarificationAndChecksOwnership() throws Exception {
+        var original = message;
+        UUID file;
+        try (var book = new org.apache.poi.hssf.usermodel.HSSFWorkbook(); var out = new ByteArrayOutputStream()) {
+            for (String name : List.of("First", "Second")) {
+                var sheet = book.createSheet(name);
+                var row = sheet.createRow(0);
+                row.createCell(0).setCellValue("2026-06-01");
+                row.createCell(1).setCellValue(120);
+            }
+            book.write(out);
+            file = attachments.stage(conversation, "plan.xls", new ByteArrayInputStream(out.toByteArray()));
+        }
+        attachments.bindToMessage(file, original);
+        var operation = tool.startScheduleImport(Kind.PAYMENT, context()).state();
+        var processing = store.attachmentProcessing(conversation, file, original);
+        assertThat(processing.stage().name()).isEqualTo("NEEDS_SHEET");
+        assertThat(processing.operationId()).isEqualTo(operation.operationId());
+        UUID wrongSource = message(conversation, AiChatMessageEntityType.USER, "Other source");
+        assertThatThrownBy(() -> store.attachmentProcessing(conversation, file, wrongSource)).isInstanceOf(SecurityException.class);
+
+        var stranger = data.create(User.class);
+        stranger.setUsername("stranger");
+        DashboardFixtures.authenticate(stranger, "ROLE_finance-manager-role");
+        assertThatThrownBy(() -> store.attachmentProcessing(conversation, file, original)).isInstanceOf(SecurityException.class);
+    }
+
     @Test void mappingReadsAllRowsServerSideAndRequiresExplicitSheet() {
         UUID file=stage("date;amount\n2026-06-01;100\n2026-06-01;20");attachments.bindToMessage(file,message);
         var result=tool.startScheduleImport(Kind.PAYMENT,context());

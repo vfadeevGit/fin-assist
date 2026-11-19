@@ -2,6 +2,7 @@ package ru.stnovator.finassist.ai.schedule;
 
 import io.jmix.aitools.tool.AiToolStatusPublisher;
 import io.jmix.aitools.tool.JmixAiTool;
+import io.jmix.core.FileStorageException;
 import io.jmix.core.UnconstrainedDataManager;
 import io.jmix.core.security.AccessDeniedException;
 import org.springframework.ai.chat.model.ToolContext;
@@ -12,7 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Propagation;
 import ru.stnovator.finassist.entity.AiScheduleImport;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.*;
@@ -89,34 +89,70 @@ public class ScheduleImportTool implements JmixAiTool {
         var c=draft.content();
         if(c.source()==null)return issues(draft,List.of(new Issue("file","ATTACHMENT_REQUIRED")));
         var attachment=attachments.boundMetadata(c.source(),draft.conversationId(),c.sourceMessageId());
-        if(!attachment.available())return issues(draft,List.of(new Issue("file","FILE_UNAVAILABLE")));
-        String name=attachment.fileName();
+        if (!attachment.available()) return attachmentIssues(draft, List.of(new Issue("file", "FILE_UNAVAILABLE")));
         progress.update("Чтение вложения",context);
-        try(var input=attachments.open(c.source())) {
-            var inspection=reader.inspect(input,name);progress.complete("Чтение вложения","Выберите лист и колонки",context);
-            return new Result(state(draft),List.of(),inspection,inspection.issues(),null,"Follow state.nextRequired. When MAPPING, apply an unambiguous single-sheet mapping now; ask only about genuine ambiguity. Use formats=null for numeric Excel dates and amounts. Exclude recognizable total/header rows explicitly; never evaluate formulas.");
-        }catch(TableReadException e){return issues(draft,e.issues());}catch(IOException e){throw new UncheckedIOException(e);}
+        Inspection inspection;
+        try (var input = attachments.open(c.source())) {
+            inspection = reader.inspect(input, attachment.fileName());
+        } catch (TableReadException e) {
+            return attachmentIssues(draft, e.issues());
+        } catch (IOException | FileStorageException e) {
+            return attachmentIssues(draft, List.of(new Issue("file", "FILE_READ_FAILED")));
+        }
+        if (inspection.sheets().isEmpty()) {
+            return attachmentIssues(draft, inspection.issues().isEmpty()
+                    ? List.of(new Issue("file", "NO_DATA_ROWS")) : inspection.issues(), inspection);
+        }
+        if (draft.status() == Status.COLLECTING && c.rows().isEmpty()) {
+            var stage = inspection.sheets().size() > 1 ? AttachmentStage.NEEDS_SHEET : AttachmentStage.NEEDS_COLUMNS;
+            store.recordAttachmentObservation(draft.operationId(), draft.revision(), stage, null);
+        }
+        progress.complete("Чтение вложения","Выберите лист и колонки",context);
+        return new Result(state(draft),List.of(),inspection,inspection.issues(),null,"Follow state.nextRequired. When MAPPING, apply an unambiguous single-sheet mapping now; ask only about genuine ambiguity. Use formats=null for numeric Excel dates and amounts. Exclude recognizable total/header rows explicitly; never evaluate formulas.");
     }
     @Tool(description="Read ALL attachment rows on the server using explicit zero-based worksheet/column/header mapping. Do not rewrite file rows in JSON. Returns structured issues without partial rows.")
     public Result applyScheduleMapping(UUID operationId,long revision,ScheduleMappingRequest mapping,ToolContext context) {
         var draft=current(operationId,revision,context);var c=draft.content();
         if(c.source()==null)throw new IllegalStateException("An attachment is required");
         var attachment=attachments.boundMetadata(c.source(),draft.conversationId(),c.sourceMessageId());
-        if (!attachment.available()) return issues(draft,List.of(new Issue("file","FILE_UNAVAILABLE")));
-        String name=attachment.fileName();
+        if (!attachment.available()) return attachmentIssues(draft, List.of(new Issue("file", "FILE_UNAVAILABLE")));
         Mapping parsedMapping;
+        List<Row> normalizedRows;
         try {
-            if(mapping==null)return issues(draft,List.of(new Issue("file","MAPPING_REQUIRED")));
-            parsedMapping=mapping.toMapping();
-        } catch(TableReadException e) {return issues(draft,e.issues());}
-        try(var input=attachments.open(c.source())) {
-            var rows=reader.read(input,name,parsedMapping);
-            // Normalize before changing provenance, so invalid input never advances the draft.
-            var normalized=new ScheduleNormalizer().normalize(rows,parsedMapping.formats());
-            if(!normalized.issues().isEmpty())return issues(draft,normalized.issues());
-            return result(store.update(operationId,revision,new DraftContent(c.kind(),c.source(),c.sourceMessageId(),parsedMapping,normalized.rows(),c.contractId(),c.projectId(),null,null,null,null)));
-        }catch(TableReadException e){return issues(draft,e.issues());}catch(IOException e){throw new UncheckedIOException(e);}
+            if (mapping == null) return attachmentIssues(draft, List.of(new Issue("file", "MAPPING_REQUIRED")));
+            parsedMapping = mapping.toMapping();
+            try (var input = attachments.open(c.source())) {
+                var rows = reader.read(input, attachment.fileName(), parsedMapping);
+                // Normalize before changing provenance, so invalid input never advances the draft.
+                var normalized = new ScheduleNormalizer().normalize(rows, parsedMapping.formats());
+                if (!normalized.issues().isEmpty()) return attachmentIssues(draft, normalized.issues());
+                normalizedRows = normalized.rows();
+            }
+        } catch (TableReadException e) {
+            return attachmentIssues(draft, e.issues());
+        } catch (IOException | FileStorageException e) {
+            return attachmentIssues(draft, List.of(new Issue("file", "FILE_READ_FAILED")));
+        }
+        var updated = store.update(operationId, revision, new DraftContent(c.kind(), c.source(), c.sourceMessageId(),
+                parsedMapping, normalizedRows, c.contractId(), c.projectId(), null, null, null, null));
+        store.recordAttachmentObservation(operationId, updated.revision(), AttachmentStage.PARSED, null);
+        return result(updated);
     }
+
+    private Result attachmentIssues(Draft draft, List<Issue> problems) {
+        return attachmentIssues(draft, problems, null);
+    }
+
+    private Result attachmentIssues(Draft draft, List<Issue> problems, Inspection inspection) {
+        String code = problems.getFirst().code();
+        var stage = switch (code) {
+            case "MAPPING_REQUIRED", "CSV_DIALECT_REQUIRED", "CSV_ENCODING_REQUIRED" -> AttachmentStage.NEEDS_COLUMNS;
+            default -> AttachmentStage.ERROR;
+        };
+        store.recordAttachmentObservation(draft.operationId(), draft.revision(), stage, code);
+        return new Result(state(draft), List.of(), inspection, problems, null, "Correct the source or mapping; no partial rows accepted");
+    }
+
     @Tool(description="Set date/amount pairs explicitly supplied in the current user message, for a plain-text operation only. Ambiguous type/date/amount requires asking the user. Server records actual message provenance.")
     public Result setScheduleRows(UUID operationId,long revision,List<InputRow> rows,
                                   @ToolParam(required=false,description="Omit/null or all-null/empty fields for ISO dates and ungrouped decimal-dot amounts; explicit text formats use MM for month, not mm") ScheduleMappingRequest.Formats options,ToolContext context) {
