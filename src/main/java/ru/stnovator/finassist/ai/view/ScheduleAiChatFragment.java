@@ -174,6 +174,16 @@ public class ScheduleAiChatFragment extends AiChatFragment {
         super.showAssistantProcessingError();
         setMessageInputEnabled(true);
         if (retryButton != null) retryButton.setVisible(retryMessage != null);
+        if (conversation != null) {
+            // An import tool may have committed on any historical source before the assistant failed.
+            var conversationId = conversation.getId();
+            timelineItemsDc.getItems().stream()
+                    .filter(item -> item.getType() == TimelineItemType.USER && item.getMessage() != null
+                            && item.getMessage().getConversation() != null
+                            && conversationId.equals(item.getMessage().getConversation().getId()))
+                    .toList().forEach(this::refreshTimelineItem);
+            refreshConversationFiles();
+        }
         restoreImport();
     }
 

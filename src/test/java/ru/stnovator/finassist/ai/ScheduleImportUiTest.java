@@ -392,6 +392,55 @@ class ScheduleImportUiTest {
             } finally {conversations.remove(chat);}
         });
     }
+    @Test
+    void nativeFailureCallbackRefreshesHistoricalFileStatusAndPreservesRetry() {
+        auth.runWithUser("admin", () -> {
+            var chat = conversations.create();
+            try {
+                var source = chatMessages.createMessage(chat, AiChatMessageType.USER, "Original file");
+                var file = new ScheduleAttachmentService.SubmittedAttachment(UUID.randomUUID(), "history.csv",
+                        44, true, source.getId(), null);
+                when(attachments.forMessage(chat.getId(), source.getId())).thenReturn(List.of(file));
+                when(attachments.listSubmitted(chat.getId(), 0))
+                        .thenReturn(new ScheduleAttachmentService.SubmittedPage(List.of(file), 1, null));
+                navigators.view(UiTestUtils.getCurrentView(), AiChatView.class)
+                        .withRouteParameters(new com.vaadin.flow.router.RouteParameters("id", chat.getId().toString())).navigate();
+                var fragment = (ScheduleAiChatFragment) UiTestUtils.getComponent(UiTestUtils.getCurrentView(), "chatFragment");
+                var overview = conversationFileOverview(fragment);
+                overview.setOpened(true);
+                assertThat(overview.getElement().getTextRecursively()).contains("Прикреплён к сообщению");
+
+                @SuppressWarnings("unchecked")
+                var items = (io.jmix.flowui.model.CollectionContainer<io.jmix.aitoolsflowui.view.chat.timeline.TimelineItem>)
+                        org.springframework.test.util.ReflectionTestUtils.getField(fragment, "timelineItemsDc");
+                var refreshed = new ArrayList<UUID>();
+                items.addCollectionChangeListener(event -> {
+                    if (event.getChangeType() == io.jmix.flowui.model.CollectionChangeType.SET_ITEM) {
+                        event.getChanges().stream().map(item -> item.getMessage().getId()).forEach(refreshed::add);
+                    }
+                });
+                doAnswer(invocation -> {
+                    var request = (io.jmix.aitoolsflowui.model.AiChatMessage) invocation.getArgument(2);
+                    when(store.attachmentProcessing(chat.getId(), file.id(), source.getId()))
+                            .thenReturn(new AttachmentProcessing(AttachmentStage.ERROR, operation, request.getId(),
+                                    java.time.OffsetDateTime.parse("2026-11-19T09:00:00+03:00"), Kind.PAYMENT,
+                                    0, null, "INVALID_AMOUNT"));
+                    ((Runnable) invocation.getArgument(5)).run();
+                    return null;
+                }).when(coordinator).run(any(), any(), any(), any(), any(), any());
+
+                fragment.sendMessage("Reuse the original attachment");
+                assertThat(overview.getElement().getTextRecursively()).contains("некорректная сумма");
+                assertThat(refreshed).contains(source.getId());
+                assertThat(fragment.getRetryButton().isVisible()).isTrue();
+                assertThat(items.getItems()).anySatisfy(item ->
+                        assertThat(item.getType()).isEqualTo(io.jmix.aitoolsflowui.view.chat.timeline.TimelineItemType.ASSISTANT));
+            } finally {
+                conversations.remove(chat);
+            }
+        });
+    }
+
     private com.vaadin.flow.component.details.Details conversationFileOverview(ScheduleAiChatFragment fragment) {
         return fragment.getContent().getChildren().flatMap(com.vaadin.flow.component.Component::getChildren)
                 .flatMap(com.vaadin.flow.component.Component::getChildren)

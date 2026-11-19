@@ -150,7 +150,9 @@ public class ScheduleImportTool implements JmixAiTool {
             default -> AttachmentStage.ERROR;
         };
         store.recordAttachmentObservation(draft.operationId(), draft.revision(), stage, code);
-        return new Result(state(draft), List.of(), inspection, problems, null, "Correct the source or mapping; no partial rows accepted");
+        // Domain selection hydration can refuse access independently of this file attempt.
+        return new Result(redacted(draft, "MAPPING"), List.of(), inspection, problems, null,
+                "Correct the source or mapping; no partial rows accepted");
     }
 
     @Tool(description="Set date/amount pairs explicitly supplied in the current user message, for a plain-text operation only. Ambiguous type/date/amount requires asking the user. Server records actual message provenance.")

@@ -319,6 +319,32 @@ class ScheduleImportToolTest {
         assertThat(store.load(started.operationId()).revision()).isEqualTo(started.revision());
     }
 
+    @Test void attachmentRemapFailurePersistsAfterContractAccessIsRevoked() {
+        var file = stage("date;amount\n2026-06-01;120");
+        attachments.bindToMessage(file, message);
+        var started = tool.startScheduleImport(Kind.PAYMENT, context()).state();
+        var mapping = new ScheduleMappingRequest("csv", BigDecimal.ZERO, BigDecimal.ONE, BigDecimal.ONE, List.of(), null, null);
+        var parsed = tool.applyScheduleMapping(started.operationId(), started.revision(), mapping, context()).state();
+        var selected = tool.selectScheduleContract(parsed.operationId(), parsed.revision(), fixture.contract.getId(), context()).state();
+        assertThat(selected.contractId()).isEqualTo(fixture.contract.getId());
+        assertThat(selected.projectId()).isEqualTo(fixture.project.getId());
+
+        var restricted = data.create(User.class);
+        restricted.setUsername(owner);
+        DashboardFixtures.authenticate(restricted);
+        assertThat(tool.conversationState(conversation).getFirst().nextRequired()).isEqualTo("SELECTION_UNAVAILABLE");
+        var badMapping = new ScheduleMappingRequest("missing-sheet", BigDecimal.ZERO, BigDecimal.ONE, BigDecimal.ONE, List.of(), null, null);
+        var result = tool.applyScheduleMapping(selected.operationId(), selected.revision(), badMapping, context());
+        assertThat(result.issues()).containsExactly(new Issue("file", "SHEET_REQUIRED"));
+        assertThat(result.state().contractId()).isNull();
+        assertThat(result.state().projectId()).isNull();
+        assertThat(result.state().rowCount()).isZero();
+        var status = store.attachmentProcessing(conversation, file, message);
+        assertThat(status.stage()).isEqualTo(ScheduleImportStore.AttachmentStage.ERROR);
+        assertThat(status.issueCode()).isEqualTo("SHEET_REQUIRED");
+        assertThat(store.load(selected.operationId()).revision()).isEqualTo(selected.revision());
+    }
+
     @Test void attachmentInspectionPersistsWorksheetClarificationAndChecksOwnership() throws Exception {
         var original = message;
         UUID file;
