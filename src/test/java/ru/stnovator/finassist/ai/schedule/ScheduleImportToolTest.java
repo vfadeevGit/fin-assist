@@ -29,6 +29,7 @@ class ScheduleImportToolTest {
     @Autowired DataManager secured;
     @Autowired SystemAuthenticator auth;
     @Autowired FileStorageLocator storages;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean ScheduleChatContext chatContext;
     RelatedFixtures fixture;
     final String owner="tool-"+UUID.randomUUID();
     final List<UUID> conversations=new ArrayList<>();
@@ -196,6 +197,29 @@ class ScheduleImportToolTest {
         assertThat(tool.startScheduleImport(Kind.PAYMENT,context()).state()).isNull();
         assertThat(tool.conversationState(conversation)).extracting(ScheduleImportTool.State::operationId)
                 .containsExactly(revised.operationId());
+    }
+    @Test void promptKeepsCheckedSourceWhenLaterRequestSelectsAnotherFileDuringRestore() {
+        var originalMessage=message;
+        var original=stage("date;amount\n2026-06-01;120");
+        attachments.bindToMessage(original,originalMessage);
+        var draft=tool.startScheduleImport(Kind.PAYMENT,context()).state();
+        var earlierRequest=message(conversation,AiChatMessageEntityType.USER,"Continue");
+        var laterRequest=message(conversation,AiChatMessageEntityType.USER,"Use the new file");
+        var replacement=stage("date;amount\n2026-06-01;200");
+        attachments.bindToMessage(replacement,laterRequest);
+        var submission=new ScheduleChatContext.Submission(conversation,earlierRequest);
+        // Commit the later change immediately after the earlier request checks visibility.
+        org.mockito.Mockito.doAnswer(call->{
+            var visible=(boolean)call.callRealMethod();
+            store.selectSource(draft.operationId(),draft.revision(),replacement,laterRequest);
+            return visible;
+        }).when(chatContext).sourceVisible(originalMessage,submission);
+
+        assertThat(tool.conversationState(conversation,earlierRequest)).singleElement().satisfies(state->{
+            assertThat(state.source()).isEqualTo(original);
+            assertThat(state.revision()).isEqualTo(draft.revision());
+        });
+        assertThat(store.load(draft.operationId()).content().source()).isEqualTo(replacement);
     }
     @Test void actualMessageBindingSurvivesOverlappingSubmissions() {
         UUID file=stage("date;amount\n2026-06-01;120");attachments.bindToMessage(file,message);

@@ -28,7 +28,6 @@ import static ru.stnovator.finassist.ai.schedule.ScheduleImportStore.*;
 @Transactional(isolation = Isolation.REPEATABLE_READ)
 public class ScheduleImportWorkflow {
     public record Choice(UUID id, String caption) {}
-    public record SelectionState(Draft draft, Set<Mode> modes) {}
     private final ScheduleImportStore store;
     private final ScheduleImportOwnership ownership;
     private final ScheduleNormalizer normalizer;
@@ -102,12 +101,11 @@ public class ScheduleImportWorkflow {
         return modes(schedules.load(c.projectId(), c.kind(), null));
     }
 
-    /** Strict read boundary for restoring selections, including a contract awaiting a project choice. */
-    public SelectionState selectionState(UUID operationId) {
-        Draft draft = store.load(operationId);
+    /** Recheck access for the exact draft snapshot the caller is restoring. */
+    public Set<Mode> selectionModes(Draft draft) {
         ownership.conversation(draft.conversationId());
         if (draft.status() != Status.COLLECTING && draft.status() != Status.PREVIEW_READY)
-            return new SelectionState(draft, Set.of());
+            return Set.of();
         DraftContent c = content(draft);
         if (c.contractId() != null) contract(c.contractId());
         Set<Mode> available = Set.of();
@@ -115,7 +113,7 @@ public class ScheduleImportWorkflow {
             context(c);
             available = modes(schedules.load(c.projectId(), c.kind(), null));
         }
-        return new SelectionState(draft, available);
+        return available;
     }
 
     public ScheduleImportPreview preview(UUID operationId, long revision, Mode mode, String number, LocalDate effectiveDate) {

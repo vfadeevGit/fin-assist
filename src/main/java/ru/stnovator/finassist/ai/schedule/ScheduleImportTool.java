@@ -206,10 +206,9 @@ public class ScheduleImportTool implements JmixAiTool {
         return new State(draft.operationId(),draft.revision(),draft.status(),null,null,null,null,0,null,null,null,Set.of(),null,null,null,nextRequired,null);
     }
     private State state(Draft draft) {
-        var selection=workflow.selectionState(draft.operationId());
-        draft=selection.draft();
+        Set<Mode> modes=workflow.selectionModes(draft);
         if(draft.status()!=Status.COLLECTING && draft.status()!=Status.PREVIEW_READY)return redacted(draft,"CLOSED");
-        var c=draft.content();Set<Mode> modes=selection.modes();
+        var c=draft.content();
         String next=draft.status()==Status.PREVIEW_READY?"UI_CONFIRMATION":c.rows().isEmpty()?(c.source()==null?"ROWS":"MAPPING"):c.contractId()==null?"CONTRACT":c.projectId()==null?"PROJECT":c.mode()==Mode.ADDENDUM&&(c.addendumNumber()==null||c.addendumNumber().isBlank()||c.effectiveDate()==null)?"ADDENDUM_DETAILS":"MODE";
         return new State(draft.operationId(),draft.revision(),draft.status(),c.kind(),c.source(),c.sourceMessageId(),c.mapping(),c.rows().size(),c.rows().stream().map(Row::amount).reduce(BigDecimal.ZERO,BigDecimal::add),c.contractId(),c.projectId(),modes,c.mode(),c.addendumNumber(),c.effectiveDate(),next,c.source()==null?null:attachments.boundMetadata(c.source(),draft.conversationId(),c.sourceMessageId()));
     }
