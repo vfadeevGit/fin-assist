@@ -188,7 +188,7 @@ public class ScheduleAiChatInputFragment extends AiChatInputFragment {
         if (pending != null) {
             var remove = new Button(text("remove"), e -> removePendingAttachment());
             remove.setId("scheduleRemoveAttachment");
-            pendingAttachment.add(new HorizontalLayout(new Span(pending.fileName() + " (" + pending.sizeBytes() + " " + text("bytes") + ")"), remove));
+            pendingAttachment.add(new ScheduleAttachmentCard(messages, pending.fileName(), pending.sizeBytes(), remove));
         }
         if (addMenu != null) addMenu.setEnabled(pending == null && isInputEnabled());
     }

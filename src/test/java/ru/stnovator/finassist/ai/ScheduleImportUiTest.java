@@ -85,6 +85,8 @@ class ScheduleImportUiTest {
 
     @BeforeEach
     void setup() {
+        when(attachments.listSubmitted(any(UUID.class), anyInt()))
+                .thenReturn(new ScheduleAttachmentService.SubmittedPage(List.of(), 0, null));
         var rows = java.util.stream.IntStream.range(0, 150).mapToObj(i -> new Row(LocalDate.of(2027, 1, 1).plusDays(i), new BigDecimal("12.34"))).toList();
         var comparison = ScheduleComparison.compare(List.of(new ScheduleComparison.Entry(LocalDate.of(2026, 1, 1), BigDecimal.TEN)),
                 rows.stream().map(r -> new ScheduleComparison.Entry(r.date(), r.amount())).toList());
@@ -258,7 +260,12 @@ class ScheduleImportUiTest {
             var pending = input.getPendingAttachment();
             var chat = input.getAttachmentConversation();
             try {
-                input.removePendingAttachment();
+                var card = (com.vaadin.flow.component.orderedlayout.VerticalLayout) FragmentUtils.getComponent(input, "pendingAttachment");
+                assertThat(card.getElement().getTextRecursively()).contains(pending.fileName(), "28");
+                var remove = card.getChildren().flatMap(com.vaadin.flow.component.Component::getChildren)
+                        .filter(Button.class::isInstance).map(Button.class::cast).findFirst().orElseThrow();
+                remove.click();
+                assertThat(card.isVisible()).isFalse();
                 assertThat(input.getPendingAttachment()).isNull();
                 verify(attachments).remove(pending.id());
             } finally {
@@ -292,6 +299,46 @@ class ScheduleImportUiTest {
     }
 
     @Test
+    void conversationFilesStartsCollapsedAndPagesOnlyBoundConversation() {
+        auth.runWithUser("admin", () -> {
+            var chat = conversations.create();
+            var other = conversations.create();
+            var first = new ScheduleAttachmentService.SubmittedAttachment(UUID.randomUUID(), "recent.csv", 30);
+            var older = new ScheduleAttachmentService.SubmittedAttachment(UUID.randomUUID(), "older.csv", 40);
+            var empty = new ScheduleAttachmentService.SubmittedPage(List.of(), 0, null);
+            try {
+                when(attachments.listSubmitted(chat.getId(), 0))
+                        .thenReturn(new ScheduleAttachmentService.SubmittedPage(List.of(first), 2, 1));
+                when(attachments.listSubmitted(chat.getId(), 1))
+                        .thenReturn(new ScheduleAttachmentService.SubmittedPage(List.of(older), 2, null));
+                when(attachments.listSubmitted(other.getId(), 0)).thenReturn(empty);
+                navigators.view(UiTestUtils.getCurrentView(), AiChatView.class)
+                        .withRouteParameters(new com.vaadin.flow.router.RouteParameters("id", chat.getId().toString())).navigate();
+                var fragment = (ScheduleAiChatFragment) UiTestUtils.getComponent(UiTestUtils.getCurrentView(), "chatFragment");
+                var overview = fragment.getContent().getChildren().flatMap(com.vaadin.flow.component.Component::getChildren)
+                        .flatMap(com.vaadin.flow.component.Component::getChildren)
+                        .filter(c -> c.getId().orElse("").equals("scheduleConversationFiles"))
+                        .map(com.vaadin.flow.component.details.Details.class::cast).findFirst().orElse(null);
+                assertThat(overview).isNotNull();
+                assertThat(overview.isOpened()).isFalse();
+                assertThat(overview.getSummaryText()).endsWith(" · 2");
+                overview.setOpened(true);
+                var more = overview.getContent().flatMap(com.vaadin.flow.component.Component::getChildren)
+                        .filter(Button.class::isInstance).map(Button.class::cast).findFirst().orElseThrow();
+                more.click();
+                assertThat(overview.getElement().getTextRecursively()).contains("recent.csv", "older.csv");
+                fragment.setConversation(other);
+                assertThat(overview.isOpened()).isFalse();
+                assertThat(overview.getSummaryText()).endsWith(" · 0");
+                assertThat(overview.getElement().getTextRecursively()).doesNotContain("recent.csv", "older.csv");
+            } finally {
+                conversations.remove(chat);
+                conversations.remove(other);
+            }
+        });
+    }
+
+    @Test
     void submittedFileRendersWithActualUserAfterSendCompletionAndReload() {
         auth.runWithUser("admin", () -> {
             var chat=conversations.create();
@@ -303,7 +350,7 @@ class ScheduleImportUiTest {
                 upload(input);var pending=input.getPendingAttachment();
                 doAnswer(invocation->{
                     UUID actual=invocation.getArgument(1);
-                    when(attachments.forMessage(chat.getId(),actual)).thenReturn(List.of(new ScheduleAttachmentService.SubmittedAttachment(pending.id(),pending.fileName(),pending.sizeBytes())));
+                    when(attachments.forMessage(chat.getId(),actual)).thenReturn(List.of(new ScheduleAttachmentService.SubmittedAttachment(pending.id(),pending.fileName(),pending.sizeBytes(),true,actual,null)));
                     return null;
                 }).when(attachments).bindToMessage(eq(pending.id()),any());
                 fragment.sendMessage("Prepare payment schedule");
@@ -315,6 +362,14 @@ class ScheduleImportUiTest {
                 assertSentBadge(fragment,chatMessages.loadMessages(chat).iterator().next(),pending.fileName());
                 fragment.setConversation(chat);
                 assertSentBadge(fragment,chatMessages.loadMessages(chat).iterator().next(),pending.fileName());
+                when(attachments.forMessage(chat.getId(), actual.getId())).thenReturn(List.of(
+                        new ScheduleAttachmentService.SubmittedAttachment(pending.id(), pending.fileName(),
+                                pending.sizeBytes(), false, actual.getId(), null)));
+                var renderer = fragments.create(fragment, io.jmix.aitoolsflowui.view.chat.renderer.TimelineItemRenderer.class);
+                renderer.setItem(timelineFactory.createUserItem(actual));
+                assertThat(renderer.getContent().getElement().getTextRecursively()).contains(pending.fileName(), "Недоступен");
+                assertThat(renderer.getContent().getChildren().flatMap(com.vaadin.flow.component.Component::getChildren)
+                        .filter(com.vaadin.flow.component.html.Anchor.class::isInstance)).isEmpty();
             } finally {conversations.remove(chat);}
         });
     }
@@ -324,6 +379,10 @@ class ScheduleImportUiTest {
         assertThat(renderer.getContent().getElement().getTextRecursively()).contains(name);
         assertThat(renderer.getContent().getChildren().filter(c->c.getElement().hasAttribute("data-source-message-id")))
                 .singleElement().satisfies(c->assertThat(c.getElement().getAttribute("data-source-message-id")).isEqualTo(message.getId().toString()));
+        assertThat(renderer.getContent().getChildren().flatMap(com.vaadin.flow.component.Component::getChildren)
+                .filter(com.vaadin.flow.component.html.Anchor.class::isInstance)
+                .map(com.vaadin.flow.component.html.Anchor.class::cast))
+                .singleElement().satisfies(link -> assertThat(link.getHref()).isNotBlank());
         renderer.setItem(timelineFactory.createAssistantItem(message));
         assertThat(renderer.getContent().getElement().getTextRecursively()).doesNotContain(name);
     }

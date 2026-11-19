@@ -1,6 +1,10 @@
 package ru.stnovator.finassist.ai.view;
 
 import com.vaadin.flow.component.button.Button;
+import com.vaadin.flow.component.details.Details;
+import com.vaadin.flow.component.html.Div;
+import com.vaadin.flow.component.html.Span;
+import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import io.jmix.aitoolsflowui.model.*;
 import io.jmix.aitoolsflowui.view.chat.AiChatFragment;
 import io.jmix.aitoolsflowui.view.chat.timeline.TimelineItemType;
@@ -12,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import ru.stnovator.finassist.ai.schedule.*;
 
 import java.util.Objects;
+import java.util.UUID;
 
 @FragmentDescriptor("schedule-ai-chat-fragment.xml")
 public class ScheduleAiChatFragment extends AiChatFragment {
@@ -28,6 +33,9 @@ public class ScheduleAiChatFragment extends AiChatFragment {
     private ScheduleAiChatInputFragment.Pending retryAttachment;
     private boolean retryAttachmentBound;
     private Button retryButton;
+    private Details conversationFiles;
+    private Div conversationFileList;
+    private Button moreFiles;
 
     @Subscribe
     public void onScheduleReady(ReadyEvent event) {
@@ -36,7 +44,15 @@ public class ScheduleAiChatFragment extends AiChatFragment {
         retryButton.setId("scheduleRetryMessage");
         retryButton.setVisible(false);
         composerContainer.add(retryButton);
+        conversationFileList = new Div();
+        conversationFileList.addClassName("schedule-conversation-file-list");
+        conversationFiles = new Details("", conversationFileList);
+        conversationFiles.setId("scheduleConversationFiles");
+        conversationFiles.setWidthFull();
+        var content = (VerticalLayout) timelineList.getParent().orElseThrow();
+        content.addComponentAsFirst(conversationFiles);
         restoreImport();
+        refreshConversationFiles();
     }
 
     @Override
@@ -49,10 +65,46 @@ public class ScheduleAiChatFragment extends AiChatFragment {
             displayed = null;
             submittedObservation = null;
             retryObservation = null;
+            if (conversationFiles != null) conversationFiles.setOpened(false);
         }
         ((ScheduleAiChatInputFragment) composerFragment).bindConversation(value);
         super.setConversation(value);
         restoreImport();
+        refreshConversationFiles();
+    }
+
+    private void refreshConversationFiles() {
+        if (conversationFiles == null) return;
+        conversationFileList.removeAll();
+        moreFiles = null;
+        conversationFiles.setVisible(conversation != null);
+        if (conversation != null) appendConversationFiles(conversation.getId(), 0);
+    }
+
+    private void appendConversationFiles(UUID conversationId, int offset) {
+        if (conversation == null || !conversationId.equals(conversation.getId())) return;
+        if (moreFiles != null) conversationFileList.remove(moreFiles);
+        moreFiles = null;
+        String group = "ru.stnovator.finassist.ai.view";
+        ScheduleAttachmentService.SubmittedPage page;
+        try {
+            page = attachments.listSubmitted(conversationId, offset);
+        } catch (SecurityException unavailable) {
+            conversationFileList.removeAll();
+            conversationFiles.setVisible(false);
+            return;
+        }
+        conversationFiles.setSummaryText(messages.formatMessage(group, "scheduleImport.conversationFiles", page.totalCount()));
+        page.files().forEach(file -> conversationFileList.add(
+                ScheduleAttachmentCard.submitted(messages, attachments, conversationId, file, true)));
+        if (page.totalCount() == 0) {
+            conversationFileList.add(new Span(messages.getMessage(group, "scheduleImport.noConversationFiles")));
+        }
+        if (page.nextOffset() != null) {
+            moreFiles = new Button(messages.getMessage(group, "scheduleImport.moreConversationFiles"),
+                    e -> appendConversationFiles(conversationId, page.nextOffset()));
+            conversationFileList.add(moreFiles);
+        }
     }
 
     private void restoreImport() {
@@ -85,6 +137,7 @@ public class ScheduleAiChatFragment extends AiChatFragment {
 
     private void processSubmittedMessage(AiChatMessage actualUserMessage) {
         if (retryButton != null) retryButton.setVisible(false);
+        boolean newlyBound = false;
         try {
             var observed = retryObservation;
             confirmations.captureObservation(actualUserMessage.getConversation().getId(), actualUserMessage.getId(),
@@ -92,6 +145,7 @@ public class ScheduleAiChatFragment extends AiChatFragment {
             if (!retryAttachmentBound && retryAttachment != null) {
                 attachments.bindToMessage(retryAttachment.id(), actualUserMessage.getId());
                 retryAttachmentBound = true;
+                newlyBound = true;
                 timelineItemsDc.getItems().stream()
                         .filter(item -> item.getType() == TimelineItemType.USER
                                 && item.getMessage() != null && actualUserMessage.getId().equals(item.getMessage().getId()))
@@ -102,6 +156,7 @@ public class ScheduleAiChatFragment extends AiChatFragment {
         catch (RuntimeException failure) {
             showAssistantProcessingError();
         }
+        if (newlyBound) refreshConversationFiles();
     }
 
     @Override

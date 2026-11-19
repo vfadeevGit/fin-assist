@@ -94,6 +94,20 @@ public class ScheduleAttachmentService {
         if(attachment.getFileDeletedAt()!=null || attachment.getRemovalRequestedAt()!=null) throw new IllegalStateException("File is unavailable");
         return storages.getByName(attachment.getFileRef().getStorageName()).openStream(attachment.getFileRef());
     }
+    public record SubmittedDownload(InputStream stream, String fileName, long sizeBytes) {
+    }
+
+    /** Checks persisted submission metadata under the attachment lock at download time. */
+    @Transactional
+    public SubmittedDownload openSubmitted(UUID attachmentId, UUID conversationId, UUID userMessageId) {
+        var attachment = owned(attachmentId);
+        verifySubmission(attachment, conversationId, userMessageId);
+        requireAvailable(attachment);
+        var ref = attachment.getFileRef();
+        return new SubmittedDownload(storages.getByName(ref.getStorageName()).openStream(ref),
+                attachment.getFileName(), attachment.getSizeBytes());
+    }
+
     /** Called by the UI after native USER persistence and before AI processing. Never a model tool. */
     @Transactional
     public void bindToMessage(UUID attachmentId, UUID userMessageId) {
@@ -126,11 +140,18 @@ public class ScheduleAttachmentService {
     @Transactional
     public SubmittedAttachment boundMetadata(UUID attachmentId,UUID conversationId,UUID userMessageId) {
         var attachment=readOwned(attachmentId);
-        var message=ownership.userMessage(userMessageId,conversationId);
-        if(!conversationId.equals(attachment.getOriginalConversationId()) || !userMessageId.equals(attachment.getSourceMessageId()))
-            throw new SecurityException("Attachment is unavailable for this submission");
-        return metadata(attachment,message.getCreatedDate());
+        var message = verifySubmission(attachment, conversationId, userMessageId);
+        return metadata(attachment, message.getCreatedDate());
     }
+
+    private AiChatMessageEntity verifySubmission(AiScheduleAttachment attachment, UUID conversationId, UUID userMessageId) {
+        var message = ownership.userMessage(userMessageId, conversationId);
+        if (!conversationId.equals(attachment.getOriginalConversationId()) || !userMessageId.equals(attachment.getSourceMessageId())) {
+            throw new SecurityException("Attachment is unavailable for this submission");
+        }
+        return message;
+    }
+
     private SubmittedAttachment metadata(AiScheduleAttachment attachment,OffsetDateTime submittedAt) {
         return new SubmittedAttachment(attachment.getId(),attachment.getFileName(),attachment.getSizeBytes(),
                 available(attachment),attachment.getSourceMessageId(),submittedAt);

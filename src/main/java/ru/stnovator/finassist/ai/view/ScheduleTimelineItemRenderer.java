@@ -48,15 +48,10 @@ public class ScheduleTimelineItemRenderer extends TimelineItemRenderer {
         }
         if (item.getType() != TimelineItemType.USER) return;
         for (var attachment : attachments.forMessage(message.getConversation().getId(), message.getId())) {
-            String group = "ru.stnovator.finassist.ai.view";
-            String status = messages.getMessage(group, attachment.available()
-                    ? "scheduleImport.attachmentSent" : "scheduleImport.attachmentUnavailable");
-            var badge = new Span(messages.formatMessage(group, "scheduleImport.sentAttachment",
-                    attachment.fileName(), attachment.sizeBytes(), status));
-            badge.addClassName("schedule-sent-attachment");
-            badge.getElement().setAttribute("data-source-message-id", message.getId().toString());
-            decorations.add(badge);
-            getContent().add(badge);
+            var card = ScheduleAttachmentCard.submitted(messages, attachments,
+                    message.getConversation().getId(), attachment, false);
+            decorations.add(card);
+            getContent().add(card);
         }
     }
 }

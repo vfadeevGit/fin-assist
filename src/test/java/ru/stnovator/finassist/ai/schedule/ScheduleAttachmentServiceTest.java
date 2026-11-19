@@ -17,6 +17,7 @@ import static org.assertj.core.api.Assertions.*;
 class ScheduleAttachmentServiceTest {
     @Autowired ScheduleAttachmentService service;
     @Autowired io.jmix.aitoolsflowui.service.AiConversationService nativeConversations;
+    @Autowired io.jmix.aitoolsflowui.service.AiChatMessageService nativeMessages;
     @Autowired ScheduleImportStore store;
     @Autowired FileStorageLocator storageLocator;
     @Autowired ScheduleImportCleanup cleanup;
@@ -38,6 +39,37 @@ class ScheduleAttachmentServiceTest {
     }
     UUID stage(){return service.stage(conversation,"schedule.csv",new ByteArrayInputStream("date;amount".getBytes()));}
     ScheduleImportStore.DraftContent content(UUID id){return new ScheduleImportStore.DraftContent(null,id,null,null,List.of(),null,null,null,null,null,null);}
+    @Test void downloadRequiresTheOwnedSubmittedSourceAndRechecksAvailability() throws IOException {
+        var chat = nativeConversations.loadConversation(conversation);
+        var message = nativeMessages.createMessage(chat, io.jmix.aitoolsflowui.model.AiChatMessageType.USER, "Download source");
+        var otherMessage = nativeMessages.createMessage(chat, io.jmix.aitoolsflowui.model.AiChatMessageType.USER, "Other message");
+        UUID otherConversation = conversation(owner);
+        UUID attachment = stage();
+        assertThatThrownBy(() -> service.openSubmitted(attachment, conversation, message.getId()))
+                .isInstanceOf(SecurityException.class);
+        service.bindToMessage(attachment, message.getId());
+
+        var download = service.openSubmitted(attachment, conversation, message.getId());
+        try (var original = download.stream()) {
+            assertThat(original.readAllBytes()).isEqualTo("date;amount".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        }
+        assertThat(download.fileName()).isEqualTo("schedule.csv");
+        assertThat(download.sizeBytes()).isEqualTo(11);
+        assertThatThrownBy(() -> service.openSubmitted(attachment, otherConversation, message.getId()))
+                .isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> service.openSubmitted(attachment, conversation, otherMessage.getId()))
+                .isInstanceOf(SecurityException.class);
+
+        login("other-user");
+        assertThatThrownBy(() -> service.openSubmitted(attachment, conversation, message.getId()))
+                .isInstanceOf(SecurityException.class);
+        login(owner);
+        service.remove(attachment);
+        assertThat(service.forMessage(conversation, message.getId())).singleElement()
+                .satisfies(file -> assertThat(file.available()).isFalse());
+        assertThatThrownBy(() -> service.openSubmitted(attachment, conversation, message.getId()))
+                .isInstanceOf(IllegalStateException.class);
+    }
     @Test void attachmentIdCannotCrossConversation(){
         UUID attachment=stage(); UUID other=conversation(owner);UUID operation=store.create(other);
         assertThatThrownBy(()->store.update(operation,0,content(attachment))).isInstanceOf(SecurityException.class);
