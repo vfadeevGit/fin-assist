@@ -73,6 +73,9 @@ dependencies {
 
 test {
     useJUnitPlatform()
+    // Keep the full Jmix integration suite within a bounded context cache.
+    maxHeapSize = '1600m'
+    systemProperty 'spring.test.context.cache.maxSize', '3'
 }
 
 vaadin {
