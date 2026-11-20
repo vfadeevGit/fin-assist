@@ -1,0 +1,27 @@
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+ xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+    <changeSet author="finassist" id="chat-confirmation-1">
+        <!-- Internal provenance only. Neither table is a Jmix entity accessible to generic tools. -->
+        <sql>
+            create table ai_schedule_proposal (
+                message_id uuid primary key references aitls_ai_chat_message_entity(id) on delete cascade,
+                conversation_id uuid not null references aitls_ai_conversation_entity(id) on delete cascade,
+                operation_id uuid not null references ai_schedule_import(id) on delete cascade,
+                revision bigint not null, fingerprint text not null, pending boolean not null
+            );
+            create unique index uq_ai_schedule_pending on ai_schedule_proposal(conversation_id) where pending;
+            create table ai_schedule_reply (
+                message_id uuid primary key references aitls_ai_chat_message_entity(id) on delete cascade,
+                proposal_id uuid, revision bigint, outcome varchar(24)
+            );
+        </sql>
+    </changeSet>
+    <changeSet author="finassist" id="chat-confirmation-2">
+        <sql>
+            alter table ai_schedule_reply add column submitted_digest bytea;
+            alter table ai_schedule_reply add column applied_operation_id uuid;
+            update ai_schedule_reply r set applied_operation_id=p.operation_id
+                from ai_schedule_proposal p where r.proposal_id=p.message_id and r.outcome='APPLIED';
+        </sql>
+    </changeSet>
+</databaseChangeLog>

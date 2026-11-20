@@ -5,6 +5,7 @@ import io.jmix.core.DataManager;
 import io.jmix.core.security.SystemAuthenticator;
 import io.jmix.flowui.ViewNavigators;
 import io.jmix.flowui.component.UiComponentUtils;
+import io.jmix.flowui.fragment.FragmentUtils;
 import io.jmix.flowui.kit.component.button.JmixButton;
 import io.jmix.flowui.testassist.FlowuiTestAssistConfiguration;
 import io.jmix.flowui.testassist.UiTest;
@@ -15,6 +16,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import ru.stnovator.finassist.FinAssistApplication;
 import ru.stnovator.finassist.entity.User;
+import ru.stnovator.finassist.ai.view.ScheduleAiChatHubFragment;
+import ru.stnovator.finassist.ai.view.ScheduleAiChatInputFragment;
 import ru.stnovator.finassist.test_support.DashboardFixtures;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -40,6 +43,8 @@ class AiToolsShortcutUiTest {
             assertThat(button.isEnabled()).isTrue();
             button.click();
             assertThat((Object) UiTestUtils.getCurrentView()).isInstanceOf(AiChatHubView.class);
+            var hub = (ScheduleAiChatHubFragment) UiTestUtils.getComponent(UiTestUtils.getCurrentView(), "hubFragment");
+            assertThat(FragmentUtils.getComponent(hub, "composerFragment")).isInstanceOf(ScheduleAiChatInputFragment.class);
         });
     }
 

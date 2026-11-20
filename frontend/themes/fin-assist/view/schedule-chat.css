@@ -1,0 +1,28 @@
+.timeline-row-host .timeline-markdown {
+    max-inline-size: 100%;
+    overflow-wrap: anywhere;
+}
+
+.timeline-row-host .timeline-markdown > .schedule-proposal-table {
+    max-block-size: min(18rem, 35vh);
+    overflow: auto;
+    border: 1px solid var(--vaadin-border-color-secondary);
+    border-radius: var(--vaadin-radius-s);
+}
+
+.schedule-proposal-table:focus-visible {
+    outline: 2px solid var(--vaadin-focus-ring-color);
+    outline-offset: 2px;
+}
+
+.timeline-row-host .timeline-markdown > .schedule-proposal-table > table {
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.schedule-proposal-table th {
+    position: sticky;
+    inset-block-start: 0;
+    background: var(--vaadin-background-container);
+}

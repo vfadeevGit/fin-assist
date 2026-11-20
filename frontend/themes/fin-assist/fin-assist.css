@@ -147,3 +147,30 @@ html:not([theme~='dark']) .fin-count { font-size: 2rem; font-weight: 600; font-v
     transition: none;
   }
 }
+
+.schedule-attachment-card {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--lumo-space-xs) var(--lumo-space-s);
+    padding: var(--lumo-space-xs) var(--lumo-space-s);
+    border: 1px solid var(--lumo-contrast-20pct);
+    border-radius: var(--lumo-border-radius-m);
+    font-size: var(--lumo-font-size-s);
+}
+
+.schedule-attachment-name {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.schedule-attachment-detail {
+    color: var(--lumo-secondary-text-color);
+}
+
+.schedule-conversation-file-list {
+    display: grid;
+    gap: var(--lumo-space-xs);
+    max-height: min(16rem, 35vh);
+    overflow: auto;
+}

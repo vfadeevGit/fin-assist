@@ -50,9 +50,9 @@ class AiToolsConfigurationTest {
                 "io/jmix/aitoolsflowuidata/service/prompt/system-chat-prompt.st")
                 .getContentAsString(StandardCharsets.UTF_8);
         assertThat(text).startsWith(framework);
-        assertThat(text).contains("Both payment and shipment", "falls back to BOTH base schedules",
+        assertThat(text).contains("independently for each project and schedule kind", "effectiveDate <= reportDate",
                 "partial name", "ask the user to clarify", "Never invent a currency",
-                "represented by at least one visible correction item", "no correction items are ignored");
+                "latest non-empty correction", "Empty corrections do not erase earlier non-empty snapshots");
         assertThat(new org.springframework.ai.chat.prompt.PromptTemplate(text)
                 .render(java.util.Map.of("responseLanguage", "Russian", "additionalInstructions", "")))
                 .contains("Russian", "finassist_getEntityLinks");
@@ -61,5 +61,15 @@ class AiToolsConfigurationTest {
     @Test
     void registersNavigationTool() {
         assertThat(context.containsBean("finassist_EntityLinksTool")).isTrue();
+    }
+
+    @Test
+    void registersPreparationOnlyScheduleToolsAndChatExtension() {
+        var registry=context.getBean(io.jmix.aitools.tool.AiToolRegistry.class);
+        assertThat(registry.findByName("startScheduleImport")).isPresent();
+        assertThat(registry.findByName("previewScheduleImport")).isPresent();
+        assertThat(registry.getAllCallbacks().stream().map(t->t.getToolDefinition().name()))
+                .noneMatch(name->name.toLowerCase(java.util.Locale.ROOT).contains("commitschedule") || name.toLowerCase(java.util.Locale.ROOT).contains("confirmschedule"));
+        assertThat(context.getBean(io.jmix.aitoolsflowui.service.AiChatService.class)).isInstanceOf(ScheduleAiChatDataService.class);
     }
 }

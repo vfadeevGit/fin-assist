@@ -20,6 +20,10 @@ import io.jmix.reportsflowui.role.ReportsRunRole;
 import ru.stnovator.finassist.entity.Addendum;
 import ru.stnovator.finassist.service.ContractTerms;
 import ru.stnovator.finassist.service.ContractTermsService;
+import ru.stnovator.finassist.ai.schedule.ScheduleImportTypes.Kind;
+import ru.stnovator.finassist.service.EffectiveScheduleService;
+import ru.stnovator.finassist.service.EffectiveScheduleService.Key;
+import ru.stnovator.finassist.service.EffectiveScheduleService.Snapshot;
 import ru.stnovator.finassist.entity.Contract;
 import ru.stnovator.finassist.entity.Customer;
 import ru.stnovator.finassist.entity.PaymentScheduleCorrectionItem;
@@ -31,6 +35,7 @@ import ru.stnovator.finassist.view.contract.ContractListView;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Date;
@@ -39,6 +44,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.Set;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 @ReportDef(
         code = "list-of-contracts",
@@ -166,13 +174,15 @@ public class ListOfContracts {
     private final MetadataTools metadataTools;
     private final Messages messages;
     private final ContractTermsService contractTermsService;
+    private final EffectiveScheduleService effectiveScheduleService;
 
     public ListOfContracts(DataManager dataManager, MetadataTools metadataTools, Messages messages,
-                           ContractTermsService contractTermsService) {
+                           ContractTermsService contractTermsService, EffectiveScheduleService effectiveScheduleService) {
         this.dataManager = dataManager;
         this.metadataTools = metadataTools;
         this.messages = messages;
         this.contractTermsService = contractTermsService;
+        this.effectiveScheduleService = effectiveScheduleService;
     }
 
     @DataSetDelegate(name = "header")
@@ -268,7 +278,7 @@ public class ListOfContracts {
                 if (project == null || !project.getContract().getId().equals(contractId)) {
                     return List.of();
                 }
-                return List.of(createProjectRow(project, selectedAddendumId, mode));
+                return createProjectRows(List.of(project), selectedAddendumId, mode, params);
             }
 
             List<Project> projects = dataManager.load(Project.class)
@@ -281,9 +291,7 @@ public class ListOfContracts {
                     .parameter("contractId", contractId)
                     .list();
 
-            return projects.stream()
-                    .map(project -> createProjectRow(project, selectedAddendumId, mode))
-                    .toList();
+            return createProjectRows(projects, selectedAddendumId, mode, params);
         };
     }
 
@@ -319,8 +327,38 @@ public class ListOfContracts {
         };
     }
 
-    private Map<String, Object> createProjectRow(Project project, UUID selectedAddendumId, ContractListMode mode) {
-        ProjectSourceDecision decision = resolveProjectSource(project.getId(), selectedAddendumId, mode);
+    private List<Map<String, Object>> createProjectRows(List<Project> projects, UUID selectedAddendumId,
+                                                        ContractListMode mode, Map<String, Object> params) {
+        if (mode == ContractListMode.BASE || projects.isEmpty()) {
+            return projects.stream().map(project -> createProjectRow(project, selectedAddendumId, baseSourceDecision())).toList();
+        }
+        LocalDate reportDate = Objects.requireNonNull(getReportDate(params), "Required reportDate parameter is missing");
+        Set<UUID> projectIds = projects.stream().map(Project::getId).collect(Collectors.toSet());
+        Map<Key, Snapshot> snapshots = effectiveScheduleService.loadAll(projectIds, reportDate);
+        Set<UUID> addendumIds = snapshots.values().stream().map(Snapshot::sourceAddendumId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<UUID, Addendum> addenda = addendumIds.isEmpty() ? Map.of() : dataManager.load(Addendum.class)
+                .query("select a from Addendum a where a.id in :ids").parameter("ids", addendumIds)
+                .list().stream().collect(Collectors.toMap(Addendum::getId, addendum -> addendum));
+        return projects.stream().map(project -> {
+            UUID shipment = snapshots.get(new Key(project.getId(), Kind.SHIPMENT)).sourceAddendumId();
+            UUID payment = snapshots.get(new Key(project.getId(), Kind.PAYMENT)).sourceAddendumId();
+            ProjectSourceDecision decision = shipment == null && payment == null ? baseSourceDecision()
+                    : new ProjectSourceDecision(shipment, payment,
+                    String.format(messages.getMessage("ru.stnovator.finassist.report.listOfContracts/cashflowSourceKinds"),
+                            sourceLabel(shipment, addenda), sourceLabel(payment, addenda)));
+            return createProjectRow(project, selectedAddendumId, decision);
+        }).toList();
+    }
+
+    private String sourceLabel(UUID addendumId, Map<UUID, Addendum> addenda) {
+        if (addendumId == null) return messages.getMessage("ru.stnovator.finassist.report.listOfContracts/cashflowKindBase");
+        Addendum addendum = Objects.requireNonNull(addenda.get(addendumId), "Selected schedule source is unavailable");
+        return String.format(messages.getMessage("ru.stnovator.finassist.report.listOfContracts/cashflowKindAddendum"),
+                addendum.getNumber(), DateTimeFormatter.ofPattern("dd.MM.yyyy").format(addendum.getEffectiveDate()));
+    }
+
+    private Map<String, Object> createProjectRow(Project project, UUID selectedAddendumId, ProjectSourceDecision decision) {
 
         Map<String, Object> map = new HashMap<>();
         map.put("projectId", project.getId());
@@ -548,43 +586,6 @@ public class ListOfContracts {
                 .maxResults(1)
                 .optional()
                 .orElse(null);
-    }
-
-    private ProjectSourceDecision resolveProjectSource(UUID projectId, UUID selectedAddendumId, ContractListMode mode) {
-        if (mode != ContractListMode.ACTUAL_WITH_ADDENDUMS || selectedAddendumId == null) {
-            return baseSourceDecision();
-        }
-
-        boolean hasShipmentCorrections = dataManager.loadValue(
-                        """
-                                select count(s) from ShipmentScheduleCorrectionItem s
-                                where s.correction.project.id = :projectId
-                                  and s.correction.addendum.id = :addendumId
-                                """,
-                        Long.class)
-                .parameter("projectId", projectId)
-                .parameter("addendumId", selectedAddendumId)
-                .one() > 0;
-
-        boolean hasPaymentCorrections = dataManager.loadValue(
-                        """
-                                select count(p) from PaymentScheduleCorrectionItem p
-                                where p.correction.project.id = :projectId
-                                  and p.correction.addendum.id = :addendumId
-                                """,
-                        Long.class)
-                .parameter("projectId", projectId)
-                .parameter("addendumId", selectedAddendumId)
-                .one() > 0;
-
-        String sourceKey = hasShipmentCorrections
-                ? (hasPaymentCorrections ? "cashflowSourceAddendum" : "cashflowSourceShipmentAddendum")
-                : (hasPaymentCorrections ? "cashflowSourcePaymentAddendum" : "cashflowSourceBase");
-        return new ProjectSourceDecision(
-                hasShipmentCorrections ? selectedAddendumId : null,
-                hasPaymentCorrections ? selectedAddendumId : null,
-                messages.getMessage("ru.stnovator.finassist.report.listOfContracts/" + sourceKey)
-        );
     }
 
     private ProjectSourceDecision baseSourceDecision() {

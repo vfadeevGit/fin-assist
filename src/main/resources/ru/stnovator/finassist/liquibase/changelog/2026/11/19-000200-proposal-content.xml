@@ -1,0 +1,14 @@
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+ xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+    <changeSet author="finassist" id="chat-proposal-content-1">
+        <addColumn tableName="ai_schedule_proposal">
+            <column name="content_digest" type="bytea"/>
+        </addColumn>
+        <!-- Earlier publications have no recorded digest. A fresh proposal establishes it. -->
+        <sql>
+            update ai_schedule_proposal set pending=false where pending;
+            alter table ai_schedule_proposal add constraint ck_pending_proposal_content
+                check (not pending or (content_digest is not null and octet_length(content_digest)=32));
+        </sql>
+    </changeSet>
+</databaseChangeLog>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fragment xmlns="http://jmix.io/schema/flowui/fragment">
+    <content>
+        <vbox id="root" width="100%" padding="false" spacing="false" classNames="timeline-row-host"/>
+    </content>
+</fragment>

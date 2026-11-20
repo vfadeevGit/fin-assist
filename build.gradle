@@ -28,6 +28,10 @@ repositories {
 }
 
 dependencies {
+    // Direct parser dependencies; POI matches the Jmix 3.1 BOM.
+    implementation 'org.apache.poi:poi:5.4.1'
+    implementation 'org.apache.poi:poi-ooxml:5.4.1'
+    implementation 'org.apache.commons:commons-csv:1.14.1'
     implementation 'io.jmix.aitools:jmix-aitools-flowui-starter'
     implementation 'io.jmix.aitools:jmix-aitools-flowui-data-starter'
     implementation 'io.jmix.aitools:jmix-aitools-starter'
@@ -69,6 +73,9 @@ dependencies {
 
 test {
     useJUnitPlatform()
+    // Keep the full Jmix integration suite within a bounded context cache.
+    maxHeapSize = '1600m'
+    systemProperty 'spring.test.context.cache.maxSize', '3'
 }
 
 vaadin {

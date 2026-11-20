@@ -181,7 +181,7 @@ class CashflowCalendarTest {
     }
 
     @Test
-    void actualModeFallsBackToBaseWhenCorrectionPairIsIncomplete() {
+    void actualModePreservesBaseOnlyForUncorrectedKind() {
         ContractFixture fixture = createFixture("fallback", LocalDate.of(2026, 1, 1), 1000);
 
         createShipmentItem(fixture.shipmentSchedule, LocalDate.of(2025, 12, 20), 25);
@@ -205,20 +205,19 @@ class CashflowCalendarTest {
         List<Map<String, Object>> cells = cashflowCalendar.calendarDataLoader().loadData(null, null, params);
 
         assertThat(masterRows).hasSize(2);
-        assertThat(masterRows).extracting(row -> row.get("planSource"))
-                .containsOnly("База");
-        assertThat(masterRows).extracting(row -> row.get("addendumInfo"))
-                .containsOnly("");
+        assertThat(masterRows.getFirst()).containsEntry("planSource", "Доп. соглашение")
+                .containsEntry("addendumInfo", "№A-02 от 01.02.2026");
+        assertThat(masterRows.get(1)).containsEntry("planSource", "База").containsEntry("addendumInfo", "");
 
         Map<String, Map<String, BigDecimal>> matrix = toMatrix(cells);
         String shipmentRowId = fixture.project.getId() + ":SHIPMENT";
         String paymentRowId = fixture.project.getId() + ":PAYMENT";
 
         Map<String, Object> shipmentRow = masterRows.getFirst();
-        assertThat((BigDecimal) shipmentRow.get("beforeYear")).isEqualByComparingTo("25");
-        assertThat((BigDecimal) shipmentRow.get("afterYear")).isEqualByComparingTo("30");
-        assertThat((BigDecimal) shipmentRow.get("rowTotal")).isEqualByComparingTo("155");
-        assertThat(matrix.get(shipmentRowId).get("2026-01")).isEqualByComparingTo("100");
+        assertThat((BigDecimal) shipmentRow.get("beforeYear")).isEqualByComparingTo("0");
+        assertThat((BigDecimal) shipmentRow.get("afterYear")).isEqualByComparingTo("0");
+        assertThat((BigDecimal) shipmentRow.get("rowTotal")).isEqualByComparingTo("900");
+        assertThat(matrix.get(shipmentRowId).get("2026-01")).isEqualByComparingTo("900");
 
         Map<String, Object> paymentRow = masterRows.get(1);
         assertThat((BigDecimal) paymentRow.get("beforeYear")).isEqualByComparingTo("15");
@@ -266,6 +265,76 @@ class CashflowCalendarTest {
         assertThat(inconsistentTotals).hasSize(2);
         assertThat(inconsistentTotals).allSatisfy(row ->
                 assertThat((BigDecimal) row.get("rowTotal")).isEqualByComparingTo("0"));
+    }
+
+    @Test
+    void retainsPaymentCorrectionAfterShipmentOnlyAddendum() {
+        assertIndependentHistory(true);
+    }
+
+    @Test
+    void retainsShipmentCorrectionAfterPaymentOnlyAddendum() {
+        assertIndependentHistory(false);
+    }
+
+    private void assertIndependentHistory(boolean paymentFirst) {
+        ContractFixture fixture = createFixture("history", LocalDate.of(2026, 1, 1), 1000);
+        LocalDate firstDate = LocalDate.of(2026, 2, 10);
+        LocalDate secondDate = firstDate.plusDays(10);
+        createPaymentItem(fixture.paymentSchedule, firstDate, 100);
+        createShipmentItem(fixture.shipmentSchedule, firstDate, 50);
+        Addendum first = createAddendum(fixture.contract, "FIRST", firstDate);
+        Addendum second = createAddendum(fixture.contract, "SECOND", secondDate);
+        createPaymentCorrectionItem(fixture.project, paymentFirst ? first : second, firstDate, 120);
+        createShipmentCorrectionItem(fixture.project, paymentFirst ? second : first, firstDate, 70);
+        Addendum empty = createAddendum(fixture.contract, "EMPTY", secondDate.plusDays(1));
+        ShipmentScheduleCorrection shipment = dataManager.create(ShipmentScheduleCorrection.class);
+        shipment.setProject(fixture.project);
+        shipment.setAddendum(empty);
+        cleanupEntities.add(dataManager.save(shipment));
+        PaymentScheduleCorrection payment = dataManager.create(PaymentScheduleCorrection.class);
+        payment.setProject(fixture.project);
+        payment.setAddendum(empty);
+        cleanupEntities.add(dataManager.save(payment));
+        Project other = dataManager.create(Project.class);
+        other.setContract(fixture.contract);
+        other.setLineOfBusiness(fixture.project.getLineOfBusiness());
+        other.setName("Other history project");
+        other = dataManager.save(other);
+        cleanupEntities.add(other);
+        createPaymentCorrectionItem(other, empty, firstDate, 999);
+        createShipmentCorrectionItem(other, empty, firstDate, 999);
+        Addendum future = createAddendum(fixture.contract, "FUTURE", secondDate.plusDays(5));
+        createPaymentCorrectionItem(fixture.project, future, firstDate, 999);
+        createShipmentCorrectionItem(fixture.project, future, firstDate, 999);
+
+        assertHistoryRows(fixture, firstDate.minusDays(1), CashflowCalendarMode.ACTUAL_WITH_ADDENDUMS, 50, 100, "", "");
+        assertHistoryRows(fixture, firstDate, CashflowCalendarMode.ACTUAL_WITH_ADDENDUMS,
+                paymentFirst ? 50 : 70, paymentFirst ? 120 : 100, paymentFirst ? "" : "FIRST", paymentFirst ? "FIRST" : "");
+        assertHistoryRows(fixture, secondDate.minusDays(1), CashflowCalendarMode.ACTUAL_WITH_ADDENDUMS,
+                paymentFirst ? 50 : 70, paymentFirst ? 120 : 100, paymentFirst ? "" : "FIRST", paymentFirst ? "FIRST" : "");
+        assertHistoryRows(fixture, secondDate, CashflowCalendarMode.ACTUAL_WITH_ADDENDUMS,
+                70, 120, paymentFirst ? "SECOND" : "FIRST", paymentFirst ? "FIRST" : "SECOND");
+        assertHistoryRows(fixture, secondDate.plusDays(2), CashflowCalendarMode.ACTUAL_WITH_ADDENDUMS,
+                70, 120, paymentFirst ? "SECOND" : "FIRST", paymentFirst ? "FIRST" : "SECOND");
+        assertHistoryRows(fixture, secondDate.plusDays(2), CashflowCalendarMode.BASE, 50, 100, "", "");
+    }
+
+    private void assertHistoryRows(ContractFixture fixture, LocalDate reportDate, CashflowCalendarMode mode,
+                                   int shipment, int payment, String shipmentNumber, String paymentNumber) {
+        Map<String, Object> params = baseParams(mode);
+        params.put("reportDate", reportDate);
+        params.put("project", fixture.project);
+        List<Map<String, Object>> rows = cashflowCalendar.calendarMasterDataLoader().loadData(null, null, params);
+        assertThat(rows).hasSize(2);
+        assertThat((BigDecimal) rows.getFirst().get("rowTotal")).isEqualByComparingTo(String.valueOf(shipment));
+        assertThat((BigDecimal) rows.get(1).get("rowTotal")).isEqualByComparingTo(String.valueOf(payment));
+        for (int index = 0; index < 2; index++) {
+            String number = index == 0 ? shipmentNumber : paymentNumber;
+            assertThat(rows.get(index).get("planSource")).isEqualTo(number.isEmpty() ? "База" : "Доп. соглашение");
+            if (number.isEmpty()) assertThat(rows.get(index).get("addendumInfo")).isEqualTo("");
+            else assertThat((String) rows.get(index).get("addendumInfo")).contains("№" + number + " от ");
+        }
     }
 
     private Map<String, Object> baseParams(CashflowCalendarMode calendarMode) {

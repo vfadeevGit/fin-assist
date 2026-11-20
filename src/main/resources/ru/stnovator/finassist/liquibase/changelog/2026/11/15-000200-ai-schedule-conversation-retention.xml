@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+ xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+    <changeSet id="1" author="finassist">
+        <addColumn tableName="AI_SCHEDULE_IMPORT"><column name="ORIGINAL_CONVERSATION_ID" type="${uuid.type}"/></addColumn>
+        <addColumn tableName="AI_SCHEDULE_ATTACHMENT"><column name="ORIGINAL_CONVERSATION_ID" type="${uuid.type}"/></addColumn>
+        <sql>UPDATE AI_SCHEDULE_IMPORT SET ORIGINAL_CONVERSATION_ID = CONVERSATION_ID</sql>
+        <sql>UPDATE AI_SCHEDULE_ATTACHMENT SET ORIGINAL_CONVERSATION_ID = CONVERSATION_ID</sql>
+        <addNotNullConstraint tableName="AI_SCHEDULE_IMPORT" columnName="ORIGINAL_CONVERSATION_ID" columnDataType="${uuid.type}"/>
+        <addNotNullConstraint tableName="AI_SCHEDULE_ATTACHMENT" columnName="ORIGINAL_CONVERSATION_ID" columnDataType="${uuid.type}"/>
+        <createIndex tableName="AI_SCHEDULE_IMPORT" indexName="IDX_AI_SCHEDULE_IMPORT_ORIGINAL_CONV"><column name="ORIGINAL_CONVERSATION_ID"/></createIndex>
+        <createIndex tableName="AI_SCHEDULE_ATTACHMENT" indexName="IDX_AI_SCHEDULE_ATTACHMENT_ORIGINAL_CONV"><column name="ORIGINAL_CONVERSATION_ID"/></createIndex>
+    </changeSet>
+    <changeSet id="2" author="finassist">
+        <dropForeignKeyConstraint baseTableName="AI_SCHEDULE_IMPORT" constraintName="FK_AI_SCHEDULE_IMPORT_CONVERSATION"/>
+        <dropForeignKeyConstraint baseTableName="AI_SCHEDULE_ATTACHMENT" constraintName="FK_AI_SCHEDULE_ATTACHMENT_CONVERSATION"/>
+        <dropNotNullConstraint tableName="AI_SCHEDULE_IMPORT" columnName="CONVERSATION_ID" columnDataType="${uuid.type}"/>
+        <dropNotNullConstraint tableName="AI_SCHEDULE_ATTACHMENT" columnName="CONVERSATION_ID" columnDataType="${uuid.type}"/>
+        <addForeignKeyConstraint baseTableName="AI_SCHEDULE_IMPORT" baseColumnNames="CONVERSATION_ID" referencedTableName="AITLS_AI_CONVERSATION_ENTITY" referencedColumnNames="ID" constraintName="FK_AI_SCHEDULE_IMPORT_CONVERSATION" onDelete="SET NULL"/>
+        <addForeignKeyConstraint baseTableName="AI_SCHEDULE_ATTACHMENT" baseColumnNames="CONVERSATION_ID" referencedTableName="AITLS_AI_CONVERSATION_ENTITY" referencedColumnNames="ID" constraintName="FK_AI_SCHEDULE_ATTACHMENT_CONVERSATION" onDelete="SET NULL"/>
+    </changeSet>
+</databaseChangeLog>

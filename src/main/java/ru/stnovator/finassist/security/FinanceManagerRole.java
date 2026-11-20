@@ -10,14 +10,14 @@ import io.jmix.securityflowui.role.annotation.ViewPolicy;
 import ru.stnovator.finassist.entity.*;
 
 @ResourceRole(name = "FinanceManagerRole", code = FinanceManagerRole.CODE)
-public interface FinanceManagerRole {
+public interface FinanceManagerRole extends AiScheduleImportRole {
     String CODE = "finance-manager-role";
 
     @MenuPolicy(menuIds = {"Contract.list", "Addendum.list", "Customer.list", "Project.list", "PaymentSchedule.list", "ShipmentSchedule.list", "PaymentScheduleCorrection.list", "ShipmentScheduleCorrection.list", "LineOfBusiness.list", "report_Report.list", "report_ReportRunView", "report_ReportGroup.list", "datatl_entityInspectorListView", "datatl_dataModelListView"})
     @ViewPolicy(viewIds = {"Contract.list", "Addendum.list", "Customer.list", "Project.list", "PaymentSchedule.list", "ShipmentSchedule.list", "PaymentScheduleCorrection.list", "ShipmentScheduleCorrection.list", "LineOfBusiness.list", "report_Report.list", "report_ReportRunView", "report_ReportGroup.list", "datatl_entityInspectorListView", "datatl_dataModelListView"})
     void screens();
 
-    @ViewPolicy(viewIds = {"Contract.detail", "Project.detail", "Addendum.detail"})
+    @ViewPolicy(viewIds = {"Contract.detail", "Project.detail", "Addendum.detail", "PaymentSchedule.detail", "ShipmentSchedule.detail"})
     void relatedRecordDetails();
 
     @EntityAttributePolicy(entityClass = Addendum.class, attributes = "*", action = EntityAttributePolicyAction.MODIFY)
