@@ -95,10 +95,37 @@ public class ScheduleImportWorkflow {
                 c.contractId(), project.getId(), null, null, null, null));
     }
 
+    /** A null ID records the user's intent before contract/project selection. */
+    public Draft selectExistingAddendum(UUID operationId, long revision, UUID addendumId) {
+        DraftContent c = content(current(operationId, revision));
+        Addendum selected = null;
+        if (addendumId != null) {
+            contract(c.contractId());
+            selected = completeAddenda(c.contractId()).stream().filter(a -> a.getId().equals(addendumId))
+                    .findFirst().orElseThrow(ScheduleImportWorkflow::unavailable);
+        }
+        var requested = new DraftContent(c.kind(), c.source(), c.sourceMessageId(), c.mapping(), c.rows(),
+                c.contractId(), c.projectId(), Mode.ADDENDUM, selected == null ? null : selected.getNumber(),
+                selected == null ? null : selected.getEffectiveDate(), null).forExistingAddendum(addendumId);
+        return store.update(operationId, revision, requested);
+    }
+
+    public List<Choice> findAddenda(UUID operationId) {
+        var c = content(current(operationId, null));
+        contract(c.contractId());
+        return completeAddenda(c.contractId()).stream()
+                .sorted(Comparator.comparing(Addendum::getEffectiveDate).thenComparing(Addendum::getNumber))
+                .map(a -> new Choice(a.getId(), "№" + a.getNumber() + " · " + a.getEffectiveDate())).toList();
+    }
+
+    private Set<Mode> modes(DraftContent c, EffectiveScheduleService.Snapshot snapshot) {
+        return c.existingAddendumRequired() ? Set.of(Mode.ADDENDUM) : modes(snapshot);
+    }
+
     public Set<Mode> allowedModes(UUID operationId) {
         DraftContent c = content(current(operationId, null));
         context(c);
-        return modes(schedules.load(c.projectId(), c.kind(), null));
+        return modes(c, schedules.load(c.projectId(), c.kind(), null));
     }
 
     /** Recheck access for the exact draft snapshot the caller is restoring. */
@@ -108,10 +135,11 @@ public class ScheduleImportWorkflow {
             return Set.of();
         DraftContent c = content(draft);
         if (c.contractId() != null) contract(c.contractId());
+        if (c.existingAddendumRequired() && c.existingAddendumId() != null) selectedAddendum(c);
         Set<Mode> available = Set.of();
         if (c.projectId() != null) {
             context(c);
-            available = modes(schedules.load(c.projectId(), c.kind(), null));
+            available = modes(c, schedules.load(c.projectId(), c.kind(), null));
         }
         return available;
     }
@@ -131,9 +159,17 @@ public class ScheduleImportWorkflow {
     public ScheduleImportPreview preview(UUID operationId, long revision, Mode mode, String number, LocalDate effectiveDate) {
         Draft draft = current(operationId, revision);
         DraftContent c = content(draft);
-        String normalizedNumber = mode == Mode.ADDENDUM && number != null ? number.strip() : null;
+        if (c.existingAddendumRequired()) {
+            if (mode != Mode.ADDENDUM)
+                throw new IllegalArgumentException("Корректировку по существующему ДС нельзя заменить изменением базового графика");
+            var selected = selectedAddendum(c);
+            number = selected.getNumber(); effectiveDate = selected.getEffectiveDate();
+        }
+        String normalizedNumber = c.existingAddendumRequired() ? number
+                : mode == Mode.ADDENDUM && number != null ? number.strip() : null;
         DraftContent requested = new DraftContent(c.kind(), c.source(), c.sourceMessageId(), c.mapping(), c.rows(),
                 c.contractId(), c.projectId(), mode, normalizedNumber, mode == Mode.ADDENDUM ? effectiveDate : null, null);
+        if (c.existingAddendumRequired()) requested = requested.forExistingAddendum(c.existingAddendumId());
         Prepared prepared = prepare(requested);
         Draft updated = store.update(operationId, revision, requested);
         if (!prepared.noChanges()) updated = store.markPreviewReady(operationId, updated.revision(), prepared.fingerprint());
@@ -185,7 +221,20 @@ public class ScheduleImportWorkflow {
                 r.date() == null ? null : r.date().toString(), r.amount() == null ? null : r.amount().toPlainString(), "draft")).toList(), null);
         if (!normalized.issues().isEmpty()) throw new IllegalArgumentException("Invalid draft rows");
         var snapshot = schedules.load(c.projectId(), c.kind(), null);
-        var available = modes(snapshot);
+        if (c.existingAddendumRequired()) {
+            if (c.mode() != Mode.ADDENDUM) throw new IllegalArgumentException("Требуется корректировка по существующему ДС");
+            Addendum selected = selectedAddendum(c);
+            if (!Objects.equals(selected.getNumber(), c.addendumNumber()) || !Objects.equals(selected.getEffectiveDate(), c.effectiveDate()))
+                throw new HistoryChanged();
+            String correctionType = c.kind() == Kind.PAYMENT ? "PaymentScheduleCorrection" : "ShipmentScheduleCorrection";
+            if (!data.load(metadata.getClass(correctionType).getJavaClass())
+                    .query("e.project.id = :project and e.addendum.id = :addendum")
+                    .parameter("project", c.projectId()).parameter("addendum", selected.getId()).joinTransaction(true).list().isEmpty())
+                throw new HistoryCorrection("В выбранном ДС уже есть корректировка этого типа для проекта", "existingCorrection");
+            if (snapshot.latestCorrectionDate() != null && !selected.getEffectiveDate().isAfter(snapshot.latestCorrectionDate()))
+                throw new HistoryCorrection("Есть корректировка с такой же или более поздней датой", "existingLaterCorrection");
+        }
+        var available = modes(c, snapshot);
         if (c.mode() == null || !available.contains(c.mode())) {
             var permitted = EnumSet.noneOf(Mode.class);
             for (var choice : available) {
@@ -204,7 +253,7 @@ public class ScheduleImportWorkflow {
         }
         List<Addendum> addenda = completeAddenda(c.contractId());
         requireWrites(c, context, snapshot, normalized.rows());
-        if (c.mode() == Mode.ADDENDUM) {
+        if (c.mode() == Mode.ADDENDUM && !c.existingAddendumRequired()) {
             if (c.addendumNumber() == null || c.addendumNumber().isBlank() || c.addendumNumber().length() > 50 || c.effectiveDate() == null)
                 throw new IllegalArgumentException("Addendum number (up to 50 characters) and effective date are required");
             if (snapshot.latestCorrectionDate() != null && !c.effectiveDate().isAfter(snapshot.latestCorrectionDate()))
@@ -213,12 +262,13 @@ public class ScheduleImportWorkflow {
                 throw new HistoryCorrection("Addendum number or effective date already exists for this contract", "uniqueDocument");
         }
         var comparison = normalizer.compare(snapshot.rows(), normalized.rows());
-        boolean unchanged = comparison.rows().stream().noneMatch(ru.stnovator.finassist.service.ScheduleComparison.Row::changed);
+        boolean unchanged = !c.existingAddendumRequired() && comparison.rows().stream().noneMatch(ru.stnovator.finassist.service.ScheduleComparison.Row::changed);
         List<String> tokens = new ArrayList<>();
         tokens.add(snapshot.fingerprint());
         tokens.add(context.contract().getInternalID()); tokens.add(context.project().getName());
         tokens.add(c.kind() + ":" + c.mode() + ":" + c.contractId() + ":" + c.projectId());
         tokens.add(c.addendumNumber() + ":" + c.effectiveDate());
+        if (c.existingAddendumRequired()) tokens.add("existing:" + c.existingAddendumId());
         normalized.rows().forEach(r -> tokens.add(r.date() + ":" + r.amount().toPlainString()));
         addenda.forEach(a -> tokens.add(a.getId() + ":" + a.getVersion() + ":" + a.getNumber() + ":" + a.getEffectiveDate()));
         return new Prepared(context, normalized.rows(), comparison, fingerprint(tokens), unchanged);
@@ -228,7 +278,7 @@ public class ScheduleImportWorkflow {
         var c = draft.content();
         return new ScheduleImportPreview(draft.operationId(), draft.revision(), p.context().contract().getInternalID(),
                 p.context().project().getName(), c.kind(), c.mode(), c.addendumNumber(), c.effectiveDate(), p.rows(),
-                p.comparison(), p.comparison().afterTotal(), p.fingerprint(), p.noChanges());
+                p.comparison(), p.comparison().afterTotal(), p.fingerprint(), p.noChanges(), c.existingAddendumId());
     }
 
     private Draft current(UUID operationId, Long revision) {
@@ -268,6 +318,13 @@ public class ScheduleImportWorkflow {
         return data.load(Project.class).query("select e from Project e where e.contract.id = :contract order by e.name, e.id")
                 .parameter("contract", contractId).fetchPlan(FetchPlan.LOCAL).joinTransaction(true).list();
     }
+    private Addendum selectedAddendum(DraftContent c) {
+        if (c.existingAddendumId() == null)
+            throw new HistoryCorrection("Выберите существующее дополнительное соглашение", "existingAddendumRequired");
+        return completeAddenda(c.contractId()).stream().filter(a -> a.getId().equals(c.existingAddendumId()))
+                .findFirst().orElseThrow(ScheduleImportWorkflow::unavailable);
+    }
+
     private List<Addendum> completeAddenda(UUID contractId) {
         requireRead(Addendum.class, "contract", "number", "effectiveDate");
         List<Addendum> addenda = addenda(contractId);
@@ -303,7 +360,7 @@ public class ScheduleImportWorkflow {
         Addendum addendum = null;
         List<Object> removedItems = new ArrayList<>();
         if (c.mode() == Mode.ADDENDUM) {
-            addendum = data.create(Addendum.class);
+            addendum = c.existingAddendumRequired() ? metadataTools.deepCopy(selectedAddendum(c)) : data.create(Addendum.class);
             addendum.setContract(proposedProject.getContract()); addendum.setNumber(c.addendumNumber()); addendum.setEffectiveDate(c.effectiveDate());
             header = data.create(correctionType);
             EntityValues.setValue(header, "project", proposedProject); EntityValues.setValue(header, "addendum", addendum);
@@ -335,7 +392,7 @@ public class ScheduleImportWorkflow {
 
         // Evaluate every predicate only after both sides of every operation composition are linked.
         if (addendum != null) {
-            write(Addendum.class, addendum, Action.CREATE, "contract", "number", "effectiveDate");
+            if (!c.existingAddendumRequired()) write(Addendum.class, addendum, Action.CREATE, "contract", "number", "effectiveDate");
             write(correctionType, header, Action.CREATE, "project", "addendum");
         } else {
             write(scheduleType, header, c.mode() == Mode.CREATE ? Action.CREATE : Action.UPDATE, "project");

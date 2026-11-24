@@ -101,7 +101,7 @@ public class ScheduleAiChatFragment extends AiChatFragment {
             message.setConversation(bound);
             message.setType(AiChatMessageType.ASSISTANT);
             message.setCreatedDate(receipt.savedAt());
-            message.setContent(presentation.receipt(receipt.mode(), receipt.rowCount(), receipt.total()));
+            message.setContent(presentation.receipt(receipt));
             timeline.add(message);
         }
         timeline.sort(Comparator.comparing(message -> message.getCreatedDate().toInstant()));

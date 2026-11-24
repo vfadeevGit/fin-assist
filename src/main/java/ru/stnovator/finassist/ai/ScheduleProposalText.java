@@ -1,6 +1,7 @@
 package ru.stnovator.finassist.ai;
 
 import ru.stnovator.finassist.ai.schedule.ScheduleImportPreview;
+import ru.stnovator.finassist.ai.schedule.ScheduleImportStore;
 import ru.stnovator.finassist.ai.schedule.ScheduleImportTypes;
 
 import java.math.BigDecimal;
@@ -35,8 +36,31 @@ public class ScheduleProposalText {
                 + label("total") + ": " + total.toPlainString() + ".";
     }
 
+    public String receipt(ScheduleImportStore.DraftContent content) {
+        return receipt(content.mode(), content.rows().size(),
+                content.rows().stream().map(ScheduleImportTypes.Row::amount).reduce(BigDecimal.ZERO, BigDecimal::add),
+                content.kind(), content.addendumNumber(), content.effectiveDate(), content.existingAddendumId());
+    }
+
+    public String receipt(ScheduleImportStore.ReceiptSnapshot receipt) {
+        return receipt(receipt.mode(), receipt.rowCount(), receipt.total(), receipt.kind(), receipt.number(),
+                receipt.effectiveDate(), receipt.existingAddendumId());
+    }
+
+    private String receipt(ScheduleImportTypes.Mode mode, int count, BigDecimal total, ScheduleImportTypes.Kind kind,
+                           String number, java.time.LocalDate date, java.util.UUID existingId) {
+        if (existingId == null) return receipt(mode, count, total);
+        return label("saved") + ". " + label("correction" + kind) + ". " + label("addendum") + ": №"
+                + literal(number) + " · " + date + ". " + label("rowCount") + ": " + count + ". "
+                + label("total") + ": " + total.toPlainString() + ".";
+    }
+
     String render(ScheduleImportPreview preview, String source) {
-        var text = new StringBuilder(action(preview.mode())).append(". ").append(label("kind" + preview.kind()));
+        var text = new StringBuilder(preview.existingAddendumId() == null
+                ? action(preview.mode()) + ". " + label("kind" + preview.kind())
+                : label("correction" + preview.kind()));
+        if (preview.mode() == ScheduleImportTypes.Mode.ADDENDUM)
+            text.append("\n\n").append(label("fullSnapshot"));
         field(text, "contract", literal(preview.contractCaption()));
         field(text, "project", literal(preview.projectCaption()));
         field(text, "source", literal(source));

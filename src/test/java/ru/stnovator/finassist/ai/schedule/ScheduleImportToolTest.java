@@ -52,7 +52,7 @@ class ScheduleImportToolTest {
     }
     @Test void toolsCannotCommit() {
         assertThat(Arrays.stream(ScheduleImportTool.class.getDeclaredMethods()).filter(m->m.isAnnotationPresent(Tool.class)).map(java.lang.reflect.Method::getName))
-                .containsExactlyInAnyOrder("startScheduleImport","listScheduleAttachments","selectScheduleAttachment","inspectScheduleAttachment","applyScheduleMapping","setScheduleRows","findScheduleContracts","selectScheduleContract","selectScheduleProject","previewScheduleImport","cancelScheduleImport");
+                .containsExactlyInAnyOrder("startScheduleImport","listScheduleAttachments","selectScheduleAttachment","inspectScheduleAttachment","applyScheduleMapping","setScheduleRows","findScheduleContracts","selectScheduleContract","selectScheduleProject","previewScheduleImport","cancelScheduleImport","selectExistingScheduleAddendum");
         var before=counts();var result=tool.startScheduleImport(Kind.PAYMENT,context());
         result=tool.setScheduleRows(result.state().operationId(),result.state().revision(),List.of(new InputRow("2026-06-01","120","forged")),null,context());
         assertThat(store.load(result.state().operationId()).content().sourceMessageId()).isEqualTo(message);
@@ -63,6 +63,32 @@ class ScheduleImportToolTest {
         assertThat(result.state().nextRequired()).isEqualTo("CHAT_PROPOSAL");assertThat(result.previewId()).isEqualTo(result.state().operationId());
         assertThat(counts()).isEqualTo(before);
     }
+    @Test void existingAddendumIntentSurvivesTextAndAttachmentEdits() {
+        var a=secured.create(Addendum.class);a.setContract(fixture.contract);a.setNumber("4");
+        a.setEffectiveDate(LocalDate.parse("2026-11-09"));a=fixture.save(a);
+        var r=tool.startScheduleImport(Kind.PAYMENT,context());
+        r=tool.selectExistingScheduleAddendum(r.state().operationId(),r.state().revision(),null,context());
+        r=tool.setScheduleRows(r.state().operationId(),r.state().revision(),List.of(new InputRow("2026-12-01","100000","input")),null,context());
+        r=tool.selectScheduleContract(r.state().operationId(),r.state().revision(),fixture.contract.getId(),context());
+        assertThat(r.state().nextRequired()).isEqualTo("EXISTING_ADDENDUM");
+        r=tool.selectExistingScheduleAddendum(r.state().operationId(),r.state().revision(),null,context());
+        assertThat(r.choices()).extracting(ScheduleImportWorkflow.Choice::id).containsExactly(a.getId());
+        r=tool.selectExistingScheduleAddendum(r.state().operationId(),r.state().revision(),a.getId(),context());
+        var selected=r;
+        assertThatThrownBy(()->tool.previewScheduleImport(selected.state().operationId(),selected.state().revision(),Mode.FILL,null,null,context()))
+                .isInstanceOf(IllegalArgumentException.class);
+        r=tool.previewScheduleImport(r.state().operationId(),r.state().revision(),null,null,null,context());
+        assertThat(r.previewId()).isNotNull();
+        assertThat(r.state().existingAddendumId()).isEqualTo(a.getId());
+        assertThat(tool.conversationState(conversation).getFirst().existingAddendumId()).isEqualTo(a.getId());
+        var file=stage("date;amount\n2026-12-02;123");attachments.bindToMessage(file,message);
+        r=tool.selectScheduleAttachment(r.state().operationId(),r.state().revision(),file,context());
+        r=tool.applyScheduleMapping(r.state().operationId(),r.state().revision(),
+                new ScheduleMappingRequest("csv",BigDecimal.ZERO,BigDecimal.ONE,BigDecimal.ONE,List.of(),null,null),context());
+        assertThat(r.state().existingAddendumId()).isEqualTo(a.getId());
+        assertThat(r.state().modes()).containsExactly(Mode.ADDENDUM);
+    }
+
     @Test void forgedConversationAndAttachmentAreDenied() {
         var result=tool.startScheduleImport(Kind.PAYMENT,context());UUID other=conversation();UUID foreign=message(other,AiChatMessageEntityType.ASSISTANT,"");
         var forged=new ToolContext(Map.of("assistantMessageId",foreign,"finassist_currentUserMessageId",message));

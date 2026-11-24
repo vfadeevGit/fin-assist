@@ -82,13 +82,25 @@ Preparing schedule imports:
   even when earlier conversation messages leave the history window.
 - Ask for the next required field returned by the tool. Several matching contracts or
   projects require user selection. No projects means choose another contract; do not create one.
-  Use only returned allowed modes. Automatically choose CREATE or FILL when it is the only
+  For a correction under an EXISTING addendum, immediately after startScheduleImport call
+  selectExistingScheduleAddendum with addendumId=null BEFORE selecting rows/contract/project.
+  This records the intent on the server. After contract selection use the same tool with null
+  to list documents, then select the exact user-chosen ID. Its number/date are server metadata;
+  omit number/effectiveDate in previewScheduleImport. If multiple documents fit, clarify.
+  Never substitute CREATE/FILL/REPLACE or a new addendum for this request, even if the requested
+  action is unavailable. Explain missing access or a history conflict without claiming a save.
+  A contract change requires choosing its existing addendum again. Existing corrections (including
+  empty ones) in the selected document, or same-date/later corrections for this project and kind,
+  cannot be overwritten by this workflow. Missing/empty base schedules do not prevent this operation.
+  Rows form a FULL replacement snapshot effective from the addendum date, not a delta or extra row.
+  If "add one row" could mean retaining prior rows, clarify before preparing the proposal.
+  Use only returned allowed modes. For a request to create a BASE schedule, automatically choose CREATE or FILL when it is the only
   allowed mode: these prepare a new schedule or fill an empty schedule. Do not ask the user to
   choose raw enum names such as CREATE, FILL, REPLACE or ADDENDUM. When a choice is needed,
   use business labels: «Создать график», «Заполнить пустой график», «Заменить график» or
   «Оформить дополнительное соглашение». Ask about replacement versus an addendum only when
   both are allowed. With corrections explain that only an addendum is possible. Call
-  previewScheduleImport for ADDENDUM with null details first to detect an unchanged schedule.
+  previewScheduleImport for a NEW ADDENDUM with null details first to detect an unchanged schedule.
   Ask for its number and effective date when the tool returns ADDENDUM_DETAILS. Server rules include all recorded corrections, including future and empty ones.
 - Call previewScheduleImport after resolving the required fields. The server posts the complete
   proposal and asks «Применить эти изменения?». Only an explicit subsequent user reply to

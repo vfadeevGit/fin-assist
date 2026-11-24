@@ -75,13 +75,18 @@ public class ScheduleImportCommitService {
         Object result;
         String parent;
         if (c.mode() == Mode.ADDENDUM) {
-            Addendum addendum = data.create(Addendum.class);
+            Addendum addendum = c.existingAddendumRequired()
+                    ? metadataTools.deepCopy(data.load(Addendum.class).id(c.existingAddendumId())
+                        .fetchPlan(fp -> fp.addFetchPlan(FetchPlan.LOCAL).add("contract", FetchPlan.LOCAL)).joinTransaction(true).one())
+                    : data.create(Addendum.class);
+            if (c.existingAddendumRequired()) entityStates.makeDetached(addendum);
             addendum.setContract(project.getContract()); addendum.setNumber(preview.number()); addendum.setEffectiveDate(preview.effectiveDate());
             header = data.create(correctionType);
             EntityValues.setValue(header, "project", project); EntityValues.setValue(header, "addendum", addendum);
             addendum.setPaymentScheduleCorrections(payment ? List.of((PaymentScheduleCorrection) header) : List.of());
             addendum.setShipmentScheduleCorrections(payment ? List.of() : List.of((ShipmentScheduleCorrection) header));
-            save.saving(addendum); result = addendum; parent = "correction";
+            if (!c.existingAddendumRequired()) save.saving(addendum);
+            result = addendum; parent = "correction";
             itemType = payment ? PaymentScheduleCorrectionItem.class : ShipmentScheduleCorrectionItem.class;
         } else {
             Object existing = c.mode() == Mode.CREATE ? null : data.load(scheduleType)
@@ -115,7 +120,7 @@ public class ScheduleImportCommitService {
                 .setJoinTransaction(true).setDiscardSaved(true));
         // Secured DataManager checks the complete proposed graph again.
         EntitySet saved = data.save(save);
-        return saved.get(result);
+        return c.existingAddendumRequired() ? result : saved.get(result);
     }
 
     private Object baseGraph(Class<?> type, Object existing, Project project, boolean payment) {
