@@ -249,3 +249,11 @@ html:not([theme~='dark']) .jmix-list-menu a.fin-ai-menu-entry {
   white-space: normal;
   overflow-wrap: anywhere;
 }
+
+/* Jmix applies ellipsis to the inner label independently of its menu link. */
+.jmix-list-menu a.jmix-menu-item .link-text {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}

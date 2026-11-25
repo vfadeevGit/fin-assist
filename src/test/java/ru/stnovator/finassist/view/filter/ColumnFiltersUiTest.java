@@ -38,6 +38,8 @@ class ColumnFiltersUiTest {
     void allDataColumnsUseNativeFilters(String id, String prefix) {
         navigators.view(UiTestUtils.getCurrentView(), id).navigate();
         DataGrid<?> grid = UiTestUtils.getComponent(UiTestUtils.getCurrentView(), prefix + "DataGrid");
+        Button reset = UiTestUtils.getComponent(UiTestUtils.getCurrentView(), "clearColumnFiltersBtn");
+        assertThat(reset.getText()).isEqualTo("Сбросить все");
         for (var column : grid.getColumns()) {
             assertThat(((DataGridColumn<?>) column).isFilterable())
                     .as(id + "/" + column.getKey()).isEqualTo(!"relatedDetails".equals(column.getKey()));

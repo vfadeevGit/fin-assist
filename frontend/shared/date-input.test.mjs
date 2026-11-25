@@ -23,3 +23,16 @@ test('two-digit years always mean 2000 through 2099', () => {
   assert.deepEqual(parseDateInput('010227'), {day:1, month:1, year:2027});
   assert.deepEqual(parseDateInput('01.02.1999'), {day:1, month:1, year:1999});
 });
+
+test('picker adapter preserves four-digit years below ten through Vaadin parsing', async () => {
+  const {configureDateInput} = await import('./date-input.js');
+  const {parseDate} = await import('@vaadin/date-picker/src/vaadin-date-picker-helper.js');
+  const picker = {i18n: {}};
+  configureDateInput(picker);
+  for (const input of ['01.02.0001', '01020009', '01.02.1999', '010100']) {
+    const parts = picker.i18n.parseDate(input);
+    const parsed = parseDate(`${parts.year}-${parts.month + 1}-${parts.day}`);
+    assert.ok(parsed, input);
+    assert.equal(parsed.getFullYear(), parseDateInput(input).year, input);
+  }
+});

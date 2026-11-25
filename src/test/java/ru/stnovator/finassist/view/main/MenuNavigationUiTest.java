@@ -80,6 +80,21 @@ class MenuNavigationUiTest {
     }
 
     @Test
+    void allBusinessMenuLabelsAreLocalized() {
+        authenticator.runWithUser("admin", () -> {
+            UI.getCurrent().setLocale(Locale.forLanguageTag("ru"));
+            JmixListMenu menu = uiComponents.create(JmixListMenu.class);
+            menu.loadMenuConfig();
+            var expected = java.util.Map.of(
+                    "Contract.list", "Контракты", "Project.list", "Проекты",
+                    "Addendum.list", "Дополнительные соглашения",
+                    "ShipmentSchedule.list", "План отгрузок", "PaymentSchedule.list", "План оплат",
+                    "Customer.list", "Клиенты", "LineOfBusiness.list", "Подразделения", "User.list", "Пользователи");
+            expected.forEach((id, title) -> assertThat(menu.getMenuItem(id).getTitle()).as(id).isEqualTo(title));
+        });
+    }
+
+    @Test
     void homeRouteIsUnchanged() {
         authenticator.runWithUser("admin", () -> {
             navigators.view(UiTestUtils.getCurrentView(), MainView.class).navigate();

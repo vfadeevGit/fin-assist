@@ -4,14 +4,14 @@
           description="msg://ru.stnovator.finassist.ai/openAiTools.description"
           icon="vaadin:comment-ellipsis" classNames="fin-ai-menu-entry"/>
     <menu opened="true" id="contract-work" title="msg://ru.stnovator.finassist/menu_config.contract-work.title">
-        <item view="Contract.list"/>
-        <item view="Project.list"/>
-        <item view="Addendum.list"/>
+        <item view="Contract.list" title="msg://ru.stnovator.finassist.view.contract/contractListView.title"/>
+        <item view="Project.list" title="msg://ru.stnovator.finassist.view.project/projectListView.title"/>
+        <item view="Addendum.list" title="msg://ru.stnovator.finassist.view.addendum/AddendumListView.title"/>
     </menu>
     <menu opened="true" id="graphs" title="msg://ru.stnovator.finassist/menu.graphs">
-        <item view="ShipmentSchedule.list"/>
+        <item view="ShipmentSchedule.list" title="msg://ru.stnovator.finassist.view.shipmentschedule/ShipmentScheduleListView.title"/>
         <item view="ShipmentScheduleCorrection.list" title="msg://ru.stnovator.finassist/menu.shipmentCorrection"/>
-        <item view="PaymentSchedule.list"/>
+        <item view="PaymentSchedule.list" title="msg://ru.stnovator.finassist.view.paymentschedule/PaymentScheduleListView.title"/>
         <item view="PaymentScheduleCorrection.list" title="msg://ru.stnovator.finassist/menu.paymentCorrection"/>
     </menu>
     <menu opened="true" id="reports" title="msg://ru.stnovator.finassist/menu.reports">
@@ -19,11 +19,11 @@
         <item view="report_ReportTableView" title="msg://io.jmix.reportsflowui/reportTableView.menu" visible="false"/>
     </menu>
     <menu opened="true" id="references" title="msg://ru.stnovator.finassist/menu_config.references.title">
-        <item view="Customer.list"/>
-        <item view="LineOfBusiness.list"/>
+        <item view="Customer.list" title="msg://ru.stnovator.finassist.view.customer/customerListView.title"/>
+        <item view="LineOfBusiness.list" title="msg://ru.stnovator.finassist.view.lineofbusiness/lineOfBusinessListView.title"/>
     </menu>
     <menu opened="true" id="administration" title="msg://ru.stnovator.finassist/menu.administration">
-        <item view="User.list"/>
+        <item view="User.list" title="msg://ru.stnovator.finassist.view.user/UserListView.title"/>
         <!-- Preserve existing add-on tools and their item IDs/permissions. -->
         <menu id="report-settings" title="msg://ru.stnovator.finassist/menu.reportSettings">
             <item view="report_Report.list" title="msg://io.jmix.reportsflowui/reportListView.menu"/>

@@ -12,6 +12,11 @@ export function parseDateInput(input) {
 }
 
 export function configureDateInput(picker) {
-  picker.i18n = {...picker.i18n, parseDate: parseDateInput};
+  picker.i18n = {...picker.i18n, parseDate: input => {
+    const date = parseDateInput(input);
+    // Vaadin 25.3 interpolates this year into ISO text, whose parser rejects
+    // unsigned single-digit years. Preserve their explicit four-digit spelling.
+    return date && date.year < 10 ? {...date, year: String(date.year).padStart(4, '0')} : date;
+  }};
 }
 if (typeof window !== 'undefined') window.finassistConfigureDateInput = configureDateInput;
