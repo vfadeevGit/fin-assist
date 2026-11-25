@@ -230,3 +230,22 @@ html:not([theme~='dark']) .jmix-list-menu a.jmix-menu-item:focus-visible {
     width: 100%;
   }
 }
+
+/* Keep the assistant visible without confusing its emphasis with selection. */
+.jmix-list-menu .fin-ai-menu-entry {
+  margin-bottom: var(--lumo-space-m);
+  border: 1px solid var(--lumo-primary-color-10pct);
+  border-radius: var(--lumo-border-radius-m);
+  background: var(--lumo-primary-color-10pct);
+  font-weight: 600;
+}
+html:not([theme~='dark']) .jmix-list-menu a.fin-ai-menu-entry {
+  color: var(--fin-brand);
+  background: var(--fin-brand-soft);
+}
+.jmix-list-menu .jmix-menu-item {
+  height: auto;
+  min-height: var(--lumo-size-m);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
