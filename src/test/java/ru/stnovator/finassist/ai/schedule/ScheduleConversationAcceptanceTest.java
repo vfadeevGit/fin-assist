@@ -204,6 +204,67 @@ class ScheduleConversationAcceptanceTest {
         return confirmations.pendingProposal(domain.conversation).orElseThrow();
     }
 
+    @Test void existingShipmentAddendumUsesNativeProposalConsentAndReceipt() {
+        var a = domain.data.create(Addendum.class);
+        a.setContract(domain.fixture.contract); a.setNumber("4"); a.setEffectiveDate(LocalDate.parse("2026-11-09"));
+        a = domain.fixture.save(a);
+        UUID addendumId = a.getId();
+        var model = mock(ChatModel.class); var calls = new AtomicInteger();
+        when(model.getOptions()).thenReturn(ToolCallingChatOptions.builder().build());
+        when(model.call(any(Prompt.class))).thenAnswer(invocation -> {
+            int step = calls.getAndIncrement();
+            if (step == 6) return new ChatResponse(List.of(new Generation(new AssistantMessage("Готово"))));
+            Prompt prompt = invocation.getArgument(0);
+            var args = new HashMap<String, Object>();
+            if (step > 0) {
+                var response = prompt.getInstructions().stream().filter(ToolResponseMessage.class::isInstance)
+                        .map(ToolResponseMessage.class::cast).flatMap(m -> m.getResponses().stream()).toList().getLast();
+                var result = json.readTree(response.responseData());
+                assertThat(result.path("issues").size()).isZero();
+                args.put("operationId", result.path("state").path("operationId").asString());
+                args.put("revision", result.path("state").path("revision").asLong());
+            }
+            String tool = switch(step) {
+                case 0 -> { args.put("kind", "SHIPMENT"); yield "startScheduleImport"; }
+                case 1 -> "selectExistingScheduleAddendum";
+                case 2 -> { args.put("contractId", domain.fixture.contract.getId()); yield "selectScheduleContract"; }
+                case 3 -> { args.put("addendumId", addendumId); yield "selectExistingScheduleAddendum"; }
+                case 4 -> { args.put("rows", List.of(new ScheduleImportTypes.InputRow("2026-12-01", "100000", "user")));
+                    yield "setScheduleRows"; }
+                case 5 -> "previewScheduleImport";
+                default -> throw new AssertionError("Unexpected call " + step);
+            };
+            var call = new AssistantMessage.ToolCall("existing_" + step, "function", tool, json.writeValueAsString(args));
+            return new ChatResponse(List.of(new Generation(AssistantMessage.builder().content("").toolCalls(List.of(call)).build())));
+        });
+        ReflectionTestUtils.setField(chat, "chatClient", ChatClient.builder(model)
+                .defaultAdvisors(ToolCallingAdvisor.builder().build())
+                .defaultToolContext(Map.of(AiToolStatusPublisher.DEFAULT_TOOL_CONTEXT_MARKER, true)).build());
+        var before = domain.counts();
+        var request = user("Корректировка отгрузок по существующему ДС №4: полный новый план 01.12.2026 — 100 000 руб.");
+        String proposal = org.jsoup.parser.Parser.unescapeEntities(process(request), false);
+        assertThat(proposal).contains("Корректировка плана отгрузок", "2026-11-09", "2026-12-01", "100000.00", "полный новый снимок")
+                .doesNotContain("Создание графика");
+        assertThat(domain.counts()).isEqualTo(before);
+        var pending = confirmations.pendingProposal(domain.conversation).orElseThrow();
+        var yes = user("Да, применить");
+        confirmations.captureObservation(domain.conversation, yes, pending.messageId(), pending.revision());
+        String receipt = org.jsoup.parser.Parser.unescapeEntities(process(yes), false);
+        assertThat(receipt).contains("Сохранено", "Корректировка плана отгрузок", "№4", "2026-11-09", "100000.00");
+        assertThat(domain.store.load(pending.operationId()).resultId()).isEqualTo(addendumId);
+        var after = domain.counts();
+        assertThat(process(yes)).isEqualTo(receipt);
+        assertThat(domain.counts()).isEqualTo(after);
+        assertThat(calls.get()).isEqualTo(7);
+        assertThat(domain.data.load(Addendum.class).id(addendumId).one().getVersion()).isEqualTo(a.getVersion());
+        assertThat(domain.effective.load(domain.fixture.project.getId(), ScheduleImportTypes.Kind.SHIPMENT, LocalDate.parse("2026-11-09")).rows())
+                .containsExactly(row("2026-12-01", "100000.00"));
+        // Legacy receipt restoration uses the same document-specific server text.
+        domain.internal.remove(domain.internal.load(AiChatMessageEntity.class).id(pending.operationId()).one());
+        var restored = domain.store.receiptsWithoutMessage(domain.conversation).getFirst();
+        assertThat(context.getBean(ru.stnovator.finassist.ai.ScheduleProposalText.class).receipt(restored)).isEqualTo(receipt);
+    }
+
     private AtomicInteger installScriptedModel() {
         var calls = new AtomicInteger();
         var model = mock(ChatModel.class);

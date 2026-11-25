@@ -18,12 +18,23 @@ public class ScheduleImportStore {
     public record DraftContent(Kind kind, UUID source, UUID sourceMessageId, ScheduleTableTypes.Mapping mapping,
                                List<Row> rows, UUID contractId, UUID projectId, Mode mode,
                                String addendumNumber, LocalDate effectiveDate, String fingerprint,
-                               UUID requestMessageId,UUID startedByMessageId) {
+                               UUID requestMessageId,UUID startedByMessageId,
+                               boolean existingAddendumRequired, UUID existingAddendumId) {
         public DraftContent { rows = rows == null ? List.of() : List.copyOf(rows); }
         public DraftContent(Kind kind,UUID source,UUID sourceMessageId,ScheduleTableTypes.Mapping mapping,
                             List<Row> rows,UUID contractId,UUID projectId,Mode mode,String addendumNumber,
                             LocalDate effectiveDate,String fingerprint) {
             this(kind,source,sourceMessageId,mapping,rows,contractId,projectId,mode,addendumNumber,effectiveDate,fingerprint,null,null);
+        }
+        public DraftContent(Kind kind,UUID source,UUID sourceMessageId,ScheduleTableTypes.Mapping mapping,
+                            List<Row> rows,UUID contractId,UUID projectId,Mode mode,String addendumNumber,
+                            LocalDate effectiveDate,String fingerprint,UUID requestMessageId,UUID startedByMessageId) {
+            this(kind,source,sourceMessageId,mapping,rows,contractId,projectId,mode,addendumNumber,effectiveDate,
+                    fingerprint,requestMessageId,startedByMessageId,false,null);
+        }
+        DraftContent forExistingAddendum(UUID id) {
+            return new DraftContent(kind,source,sourceMessageId,mapping,rows,contractId,projectId,Mode.ADDENDUM,
+                    addendumNumber,effectiveDate,fingerprint,requestMessageId,startedByMessageId,true,id);
         }
         UUID requestOrSource() {
             return requestMessageId==null?sourceMessageId:requestMessageId;
@@ -78,7 +89,7 @@ public class ScheduleImportStore {
                 .map(saved -> new ReceiptDestination(ScheduleImportCommitService.resultType(saved.content()).getSimpleName(), saved.resultId()));
     }
 
-    public record ReceiptSnapshot(UUID operationId, OffsetDateTime savedAt, Mode mode, int rowCount, BigDecimal total) {}
+    public record ReceiptSnapshot(UUID operationId, OffsetDateTime savedAt, Mode mode, int rowCount, BigDecimal total, Kind kind, String number, LocalDate effectiveDate, UUID existingAddendumId) {}
 
     /** Saved before native receipt publication, or whose native receipt no longer exists. */
     @Transactional(readOnly = true)
@@ -97,7 +108,7 @@ public class ScheduleImportStore {
                     var total = content.rows().stream().map(Row::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
                     return new ReceiptSnapshot(receipt.operationId(),
                             Objects.requireNonNullElse(receipt.terminalAt(), receipt.createdAt()),
-                            content.mode(), content.rows().size(), total);
+                            content.mode(), content.rows().size(), total, content.kind(), content.addendumNumber(), content.effectiveDate(), content.existingAddendumId());
                 }).toList();
     }
 
@@ -207,8 +218,19 @@ public class ScheduleImportStore {
     }
     private Draft updateContent(AiScheduleImport entity,DraftContent content,UUID request,DraftContent prior) {
         UUID startedBy=prior==null || prior.startedBy()==null?request:prior.startedBy();
+        boolean existing = content.existingAddendumRequired() || prior != null && prior.existingAddendumRequired();
+        UUID selected = content.existingAddendumRequired() ? content.existingAddendumId()
+                : prior != null && Objects.equals(prior.contractId(),content.contractId()) ? prior.existingAddendumId() : null;
+        if (existing && content.mode() != null && content.mode() != Mode.ADDENDUM)
+            throw new IllegalArgumentException("Корректировку по существующему ДС нельзя заменить изменением базового графика");
+        String number = content.addendumNumber();
+        LocalDate date = content.effectiveDate();
+        if (existing && !content.existingAddendumRequired()) {
+            number = selected == null ? null : prior.addendumNumber();
+            date = selected == null ? null : prior.effectiveDate();
+        }
         var invalidated=new DraftContent(content.kind(),content.source(),content.sourceMessageId(),content.mapping(),content.rows(),
-                content.contractId(),content.projectId(),content.mode(),content.addendumNumber(),content.effectiveDate(),null,request,startedBy);
+                content.contractId(),content.projectId(),existing ? Mode.ADDENDUM : content.mode(),number,date,null,request,startedBy,existing,selected);
         var observation = prior != null && Objects.equals(prior.source(), content.source())
                 && Objects.equals(prior.requestOrSource(), request)
                 ? envelope(entity.getContentJson()).attachmentObservation() : null;
@@ -233,7 +255,7 @@ public class ScheduleImportStore {
         var entity=editable(operationId,expectedRevision);var c=decode(entity.getContentJson());
         if(c==null) throw new IllegalStateException("Draft content is required");
         entity.setContentJson(encode(new DraftContent(c.kind(),c.source(),c.sourceMessageId(),c.mapping(),c.rows(),
-                c.contractId(),c.projectId(),c.mode(),c.addendumNumber(),c.effectiveDate(),fingerprint,c.requestOrSource(),c.startedBy()),
+                c.contractId(),c.projectId(),c.mode(),c.addendumNumber(),c.effectiveDate(),fingerprint,c.requestOrSource(),c.startedBy(),c.existingAddendumRequired(),c.existingAddendumId()),
                 envelope(entity.getContentJson()).attachmentObservation()));
         entity.setStatus(Status.PREVIEW_READY.name());advance(entity);return draft(data.save(entity));
     }

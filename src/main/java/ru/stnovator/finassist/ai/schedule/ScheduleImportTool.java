@@ -26,7 +26,7 @@ import static ru.stnovator.finassist.ai.schedule.ScheduleTableTypes.*;
 public class ScheduleImportTool implements JmixAiTool {
     public record State(UUID operationId,long revision,Status status,Kind kind,UUID source,UUID sourceMessageId,
                         Mapping mapping,int rowCount,BigDecimal total,UUID contractId,UUID projectId,Set<Mode> modes,
-                        Mode mode,String addendumNumber,LocalDate effectiveDate,String nextRequired,ScheduleAttachmentService.SubmittedAttachment attachment) {}
+                        Mode mode,String addendumNumber,LocalDate effectiveDate,String nextRequired,ScheduleAttachmentService.SubmittedAttachment attachment, boolean existingAddendumRequired, UUID existingAddendumId) {}
     public record Result(State state,List<ScheduleImportWorkflow.Choice> choices,Inspection inspection,List<Issue> issues,UUID previewId,String message) {}
     private final ScheduleImportWorkflow workflow;
     private final ScheduleImportStore store;
@@ -192,7 +192,19 @@ public class ScheduleImportTool implements JmixAiTool {
     public Result selectScheduleProject(UUID operationId,long revision,UUID projectId,ToolContext context) {
         current(operationId,revision,context);return result(workflow.selectProject(operationId,revision,projectId));
     }
-    @Tool(description="Prepare a complete current preview only. ADDENDUM needs number and effectiveDate after every correction. No business records are saved; the server publishes the complete proposal and handles a subsequent actual user reply.")
+    @Tool(description="For a user request to correct a schedule under an EXISTING addendum, call immediately after starting a draft with addendumId=null to retain this intent. Once contract is selected, null lists its readable existing documents; select the exact user-chosen ID from those choices. Never substitutes base schedule changes or creates another addendum. A contract change requires selecting its addendum again.")
+    public Result selectExistingScheduleAddendum(UUID operationId, long revision,
+            @ToolParam(required=false) UUID addendumId, ToolContext context) {
+        current(operationId, revision, context);
+        var draft = workflow.selectExistingAddendum(operationId, revision, addendumId);
+        var choices = draft.content().contractId() == null ? List.<ScheduleImportWorkflow.Choice>of()
+                : workflow.findAddenda(operationId);
+        return new Result(state(draft), choices, null, List.of(), null,
+                addendumId == null ? "Select the existing addendum from choices after selecting the contract. Do not change the base schedule."
+                        : "Existing addendum selected. Rows must represent the complete new snapshot, not an extra row. Clarify ambiguous intent before preview.");
+    }
+
+    @Tool(description="Prepare a complete current preview only. New ADDENDUM needs number and effectiveDate after every correction. For selected existing addendum omit number/date; server uses its stored metadata. Existing-addendum intent never allows another mode. No business records are saved; the server publishes the complete proposal and handles a subsequent actual user reply.")
     public Result previewScheduleImport(UUID operationId,long revision,
             @ToolParam(required=false) Mode mode, @ToolParam(required=false) String number,
             @ToolParam(required=false) LocalDate effectiveDate, ToolContext context) {
@@ -203,7 +215,7 @@ public class ScheduleImportTool implements JmixAiTool {
                 return new Result(state(current), List.of(), null, List.of(), null, "Choose replacement or addendum in chat");
             mode = modes.iterator().next();
         }
-        if(mode==Mode.ADDENDUM && (number==null || number.isBlank() || effectiveDate==null)) {
+        if(!current.content().existingAddendumRequired() && mode==Mode.ADDENDUM && (number==null || number.isBlank() || effectiveDate==null)) {
             if (workflow.unchanged(current, mode)) {
                 prepared(context, current, mode, true);
                 return new Result(state(current), List.of(), null, List.of(), null, "Изменений нет");
@@ -265,13 +277,13 @@ public class ScheduleImportTool implements JmixAiTool {
         catch (AccessDeniedException unavailable) { return redacted(draft,"SELECTION_UNAVAILABLE"); }
     }
     private State redacted(Draft draft,String nextRequired) {
-        return new State(draft.operationId(),draft.revision(),draft.status(),null,null,null,null,0,null,null,null,Set.of(),null,null,null,nextRequired,null);
+        return new State(draft.operationId(),draft.revision(),draft.status(),null,null,null,null,0,null,null,null,Set.of(),null,null,null,nextRequired,null,false,null);
     }
     private State state(Draft draft) {
         Set<Mode> modes=workflow.selectionModes(draft);
         if(draft.status()!=Status.COLLECTING && draft.status()!=Status.PREVIEW_READY)return redacted(draft,"CLOSED");
         var c=draft.content();
-        String next=draft.status()==Status.PREVIEW_READY?"CHAT_PROPOSAL":c.rows().isEmpty()?(c.source()==null?"ROWS":"MAPPING"):c.contractId()==null?"CONTRACT":c.projectId()==null?"PROJECT":c.mode()==Mode.ADDENDUM&&(c.addendumNumber()==null||c.addendumNumber().isBlank()||c.effectiveDate()==null)?"ADDENDUM_DETAILS":modes.size()==1?"PREPARE_PREVIEW":"MODE";
-        return new State(draft.operationId(),draft.revision(),draft.status(),c.kind(),c.source(),c.sourceMessageId(),c.mapping(),c.rows().size(),c.rows().stream().map(Row::amount).reduce(BigDecimal.ZERO,BigDecimal::add),c.contractId(),c.projectId(),modes,c.mode(),c.addendumNumber(),c.effectiveDate(),next,c.source()==null?null:attachments.boundMetadata(c.source(),draft.conversationId(),c.sourceMessageId()));
+        String next=draft.status()==Status.PREVIEW_READY?"CHAT_PROPOSAL":c.rows().isEmpty()?(c.source()==null?"ROWS":"MAPPING"):c.contractId()==null?"CONTRACT":c.projectId()==null?"PROJECT":c.existingAddendumRequired()&&c.existingAddendumId()==null?"EXISTING_ADDENDUM":c.mode()==Mode.ADDENDUM&&(c.addendumNumber()==null||c.addendumNumber().isBlank()||c.effectiveDate()==null)?"ADDENDUM_DETAILS":modes.size()==1?"PREPARE_PREVIEW":"MODE";
+        return new State(draft.operationId(),draft.revision(),draft.status(),c.kind(),c.source(),c.sourceMessageId(),c.mapping(),c.rows().size(),c.rows().stream().map(Row::amount).reduce(BigDecimal.ZERO,BigDecimal::add),c.contractId(),c.projectId(),modes,c.mode(),c.addendumNumber(),c.effectiveDate(),next,c.source()==null?null:attachments.boundMetadata(c.source(),draft.conversationId(),c.sourceMessageId()),c.existingAddendumRequired(),c.existingAddendumId());
     }
 }
