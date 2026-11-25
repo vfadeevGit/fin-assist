@@ -1,6 +1,5 @@
 package ru.stnovator.finassist.view.addendum;
 
-import com.vaadin.flow.component.dependency.JsModule;
 import io.jmix.flowui.component.tabsheet.JmixTabSheet;
 import io.jmix.flowui.view.MessageBundle;
 import io.jmix.flowui.model.CollectionContainer;
@@ -61,7 +60,6 @@ import ru.stnovator.finassist.view.main.MainView;
 @ViewController("Addendum.detail")
 @ViewDescriptor("addendum-detail-view.xml")
 @EditedEntityContainer("addendumDc")
-@JsModule("./addendum/compact-date.js")
 public class AddendumDetailView extends StandardDetailView<Addendum> {
     @Autowired
     private DetailViewPresentation detailViewPresentation;
@@ -140,8 +138,6 @@ public class AddendumDetailView extends StandardDetailView<Addendum> {
         newEndDateField.setErrorMessage(messageBundle.getMessage("invalidEndDate"));
         newEndDateField.addBlurListener(e -> refreshTerms());
         newEndDateField.addInvalidChangeListener(e -> refreshTerms());
-        newEndDateField.addAttachListener(e -> e.getUI().beforeClientResponse(newEndDateField,
-                context -> newEndDateField.getElement().executeJs("window.finassistConfigureEndDate(this)")));
         shipmentPresentation = new CorrectionGridPresentation<>(shipmentScheduleCorrectionsDataGrid,
                 shipmentScheduleCorrectionsDc, this::getEditedEntity, comparisonService,
                 ru.stnovator.finassist.service.CorrectionComparisonService.Kind.SHIPMENT, relatedDataAccess, messageBundle);

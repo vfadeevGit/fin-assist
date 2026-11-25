@@ -1,7 +1,7 @@
-/** Strict, date-only parsing for the Addendum end date. Month is zero-based for Vaadin. */
-export function parseEndDate(input) {
+/** Strict, date-only parsing for documents and both kinds of filters. Month is zero-based for Vaadin. */
+export function parseDateInput(input) {
   const text = input.trim();
-  const match = /^(\d{2})(\d{2})(\d{2})$/.exec(text) || /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(text);
+  const match = /^(\d{2})(\d{2})(\d{2}|\d{4})$/.exec(text) || /^(\d{2})\.(\d{2})\.(\d{2}|\d{4})$/.exec(text);
   if (!match) return undefined;
   const [, d, m, y] = match;
   const day = Number(d), month = Number(m), year = y.length === 2 ? 2000 + Number(y) : Number(y);
@@ -11,7 +11,7 @@ export function parseEndDate(input) {
   return day <= days[month - 1] ? {day, month: month - 1, year} : undefined;
 }
 
-export function configureEndDate(picker) {
-  picker.i18n = {...picker.i18n, parseDate: parseEndDate};
+export function configureDateInput(picker) {
+  picker.i18n = {...picker.i18n, parseDate: parseDateInput};
 }
-if (typeof window !== 'undefined') window.finassistConfigureEndDate = configureEndDate;
+if (typeof window !== 'undefined') window.finassistConfigureDateInput = configureDateInput;
