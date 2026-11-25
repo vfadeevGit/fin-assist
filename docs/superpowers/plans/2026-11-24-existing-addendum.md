@@ -67,3 +67,13 @@ Four explicitly authorized real-model scenarios reached ai2mee.ru and failed at
 initial authentication (401 invalid/expired credential), with no model output.
 Live tool selection remains unverified; publish as draft pending refreshed key
 and live validation. No code changes followed the 489-test full run.
+
+
+2026-11-25 live follow-up: actual IDEA run configuration now sets
+OPENAI_BASE_URL=https://openrouter.ai/api/v1 and OPENAI_MODEL=qwen/qwen3.8-flash.
+The key was read privately from that same configuration. Real-model tests:
+4 passed, 0 failures/errors/skips, BUILD SUCCESSFUL in 8m11s, using disposable
+PostgreSQL and synthetic fixtures. Filled/empty/missing base schedules produced
+the existing-addendum snapshot with consent and idempotence; a later empty
+correction blocked preview and writes. No implementation changes were needed.
+The previous live blocker is resolved; PR can leave draft status.
