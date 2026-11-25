@@ -24,6 +24,7 @@
         <dataLoadCoordinator auto="true"/>
         <urlQueryParameters>
             <genericFilter component="genericFilter"/>
+            <dataGridFilter component="customersDataGrid"/>
             <pagination component="pagination"/>
         </urlQueryParameters>
     </facets>
@@ -37,6 +38,9 @@
             <button id="editBtn" action="customersDataGrid.edit"/>
             <button id="removeBtn" action="customersDataGrid.remove"/>
             <button id="aiToolsBtn" action="aiToolsAction"/>
+            <button id="clearColumnFiltersBtn" text="msg://ru.stnovator.finassist/columnFilters.clearAll">
+                <tooltip text="msg://ru.stnovator.finassist/columnFilters.clearAll.description"/>
+            </button>
             <simplePagination id="pagination" dataLoader="customersDl"/>
         </hbox>
         <dataGrid id="customersDataGrid"
@@ -51,7 +55,7 @@
             </actions>
             <columns resizable="true">
                 <column key="relatedDetails" frozen="true" sortable="false" flexGrow="0" width="3em"/>
-                <column property="name"/>
+                <column property="name" filterable="true"/>
 <!--                <column property="inn"/>-->
 <!--                <column property="kpp"/>-->
             </columns>

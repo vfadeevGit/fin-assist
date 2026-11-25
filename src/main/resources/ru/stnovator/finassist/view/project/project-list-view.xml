@@ -24,6 +24,7 @@
         <dataLoadCoordinator auto="true"/>
         <urlQueryParameters>
             <genericFilter component="genericFilter"/>
+            <dataGridFilter component="projectsDataGrid"/>
             <pagination component="pagination"/>
         </urlQueryParameters>
     </facets>
@@ -37,6 +38,9 @@
             <button id="editBtn" action="projectsDataGrid.edit"/>
             <button id="removeBtn" action="projectsDataGrid.remove"/>
             <button id="aiToolsBtn" action="aiToolsAction"/>
+            <button id="clearColumnFiltersBtn" text="msg://ru.stnovator.finassist/columnFilters.clearAll">
+                <tooltip text="msg://ru.stnovator.finassist/columnFilters.clearAll.description"/>
+            </button>
             <simplePagination id="pagination" dataLoader="projectsDl"/>
         </hbox>
         <dataGrid id="projectsDataGrid"
@@ -51,9 +55,9 @@
             </actions>
             <columns resizable="true">
                 <column key="relatedDetails" frozen="true" sortable="false" flexGrow="0" width="3em"/>
-                <column property="name"/>
-                <column property="contract"/>
-                <column property="lineOfBusiness"/>
+                <column property="name" filterable="true"/>
+                <column property="contract" filterable="true"/>
+                <column property="lineOfBusiness" filterable="true"/>
             </columns>
         </dataGrid>
         <hbox id="lookupActions" visible="false">

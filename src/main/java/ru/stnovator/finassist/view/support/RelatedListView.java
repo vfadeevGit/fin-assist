@@ -55,6 +55,7 @@ public abstract class RelatedListView<E> extends StandardListView<E> {
 
     @Subscribe
     public void onRelatedReady(ReadyEvent event) {
+        ColumnFilterSupport.bind(grid, loader, (Button) io.jmix.flowui.component.UiComponentUtils.getComponent(this, "clearColumnFiltersBtn"));
         boolean available=getSelectionHandler().isEmpty() && presentation.permitted(relatedKind());
         grid.getColumnByKey("relatedDetails").setVisible(available);
         if(!available) { clearExpansions(); return; }
