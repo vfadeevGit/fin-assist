@@ -24,6 +24,7 @@
         <dataLoadCoordinator auto="true"/>
         <urlQueryParameters>
             <genericFilter component="genericFilter"/>
+            <dataGridFilter component="contractsDataGrid"/>
             <pagination component="pagination"/>
         </urlQueryParameters>
     </facets>
@@ -38,6 +39,9 @@
             <button id="removeBtn" action="contractsDataGrid.remove"/>
             <button id="runReportBtn" action="contractsDataGrid.runReportAction"/>
             <button id="aiToolsBtn" action="aiToolsAction"/>
+            <button id="clearColumnFiltersBtn" text="msg://ru.stnovator.finassist/columnFilters.clearAll">
+                <tooltip text="msg://ru.stnovator.finassist/columnFilters.clearAll.description"/>
+            </button>
             <simplePagination id="pagination" dataLoader="contractsDl"/>
         </hbox>
         <dataGrid id="contractsDataGrid"
@@ -53,12 +57,12 @@
             </actions>
             <columns resizable="true">
                 <column key="relatedDetails" frozen="true" sortable="false" flexGrow="0" width="3em"/>
-                <column property="internalID"/>
-                <column property="startDate"/>
-                <column property="endDate"/>
-                <column property="customer"/>
-                <column property="paymentType"/>
-                <column property="totalAmount"/>
+                <column property="internalID" filterable="true"/>
+                <column property="startDate" filterable="true"/>
+                <column property="endDate" filterable="true"/>
+                <column property="customer" filterable="true"/>
+                <column property="paymentType" filterable="true"/>
+                <column property="totalAmount" filterable="true"/>
             </columns>
         </dataGrid>
         <hbox id="lookupActions" visible="false">

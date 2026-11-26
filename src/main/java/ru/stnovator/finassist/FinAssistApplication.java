@@ -2,6 +2,7 @@ package ru.stnovator.finassist;
 
 import com.google.common.base.Strings;
 import com.vaadin.flow.component.dependency.StyleSheet;
+import com.vaadin.flow.component.dependency.JsModule;
 import com.vaadin.flow.component.page.AppShellConfigurator;
 import com.vaadin.flow.component.page.Push;
 import com.vaadin.flow.server.PWA;
@@ -24,6 +25,7 @@ import javax.sql.DataSource;
 @Push
 @Theme(value = "fin-assist")
 @StyleSheet(Lumo.UTILITY_STYLESHEET)
+@JsModule("./shared/date-input.js")
 @PWA(name = "Fin Assist", shortName = "Fin Assist", offline = false)
 @SpringBootApplication
 public class FinAssistApplication implements AppShellConfigurator {

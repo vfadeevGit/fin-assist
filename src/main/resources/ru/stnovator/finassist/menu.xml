@@ -1,31 +1,45 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <menu-config xmlns="http://jmix.io/schema/flowui/menu">
-
-    <menu opened="true" id="contract-work"
-          description="msg://ru.stnovator.finassist/menu_config.contract-work.description"
-          title="msg://ru.stnovator.finassist/menu_config.contract-work.title">
+    <item view="aitls_AiChatHubView" title="msg://ru.stnovator.finassist/menu.aiTools"
+          description="msg://ru.stnovator.finassist.ai/openAiTools.description"
+          icon="vaadin:comment-ellipsis" classNames="fin-ai-menu-entry"/>
+    <menu opened="true" id="contract-work" title="msg://ru.stnovator.finassist/menu_config.contract-work.title">
         <item view="Contract.list" title="msg://ru.stnovator.finassist.view.contract/contractListView.title"/>
-        <item view="Addendum.list" title="msg://ru.stnovator.finassist.view.addendum/AddendumListView.title"/>
-        <item view="Customer.list" title="msg://ru.stnovator.finassist.view.customer/customerListView.title"/>
         <item view="Project.list" title="msg://ru.stnovator.finassist.view.project/projectListView.title"/>
+        <item view="Addendum.list" title="msg://ru.stnovator.finassist.view.addendum/AddendumListView.title"/>
     </menu>
-    <menu opened="true" id="plans"
-          description="msg://ru.stnovator.finassist/menu_config.plans.description"
-          title="msg://ru.stnovator.finassist/menu_config.plans.title">
-        <item view="PaymentSchedule.list" title="msg://ru.stnovator.finassist.view.paymentschedule/PaymentScheduleListView.title"/>
+    <menu opened="true" id="graphs" title="msg://ru.stnovator.finassist/menu.graphs">
         <item view="ShipmentSchedule.list" title="msg://ru.stnovator.finassist.view.shipmentschedule/ShipmentScheduleListView.title"/>
+        <item view="ShipmentScheduleCorrection.list" title="msg://ru.stnovator.finassist/menu.shipmentCorrection"/>
+        <item view="PaymentSchedule.list" title="msg://ru.stnovator.finassist.view.paymentschedule/PaymentScheduleListView.title"/>
+        <item view="PaymentScheduleCorrection.list" title="msg://ru.stnovator.finassist/menu.paymentCorrection"/>
     </menu>
-    <menu opened="true" id="corrections" description="msg://ru.stnovator.finassist/menu_config.corrections.description"
-          title="msg://ru.stnovator.finassist/menu_config.corrections.title">
-        <item view="PaymentScheduleCorrection.list"
-              title="msg://ru.stnovator.finassist.view.paymentschedulecorrection/PaymentScheduleCorrectionListView.title"/>
-        <item view="ShipmentScheduleCorrection.list"
-              title="msg://ru.stnovator.finassist.view.shipmentschedulecorrection/ShipmentScheduleCorrectionListView.title"/>
+    <menu opened="true" id="reports" title="msg://ru.stnovator.finassist/menu.reports">
+        <item view="report_ReportRunView" title="msg://ru.stnovator.finassist/menu.analytics"/>
+        <item view="report_ReportTableView" title="msg://io.jmix.reportsflowui/reportTableView.menu" visible="false"/>
     </menu>
-    <menu opened="true" id="references" description="msg://ru.stnovator.finassist/menu_config.references.description"
-          title="msg://ru.stnovator.finassist/menu_config.references.title">
-        <item view="LineOfBusiness.list"
-              title="msg://ru.stnovator.finassist.view.lineofbusiness/lineOfBusinessListView.title"/>
+    <menu opened="true" id="references" title="msg://ru.stnovator.finassist/menu_config.references.title">
+        <item view="Customer.list" title="msg://ru.stnovator.finassist.view.customer/customerListView.title"/>
+        <item view="LineOfBusiness.list" title="msg://ru.stnovator.finassist.view.lineofbusiness/lineOfBusinessListView.title"/>
+    </menu>
+    <menu opened="true" id="administration" title="msg://ru.stnovator.finassist/menu.administration">
         <item view="User.list" title="msg://ru.stnovator.finassist.view.user/UserListView.title"/>
+        <!-- Preserve existing add-on tools and their item IDs/permissions. -->
+        <menu id="report-settings" title="msg://ru.stnovator.finassist/menu.reportSettings">
+            <item view="report_Report.list" title="msg://io.jmix.reportsflowui/reportListView.menu"/>
+            <item view="report_ReportGroup.list" title="msg://io.jmix.reportsflowui/reportGroupListView.menu"/>
+        </menu>
+        <menu id="security">
+            <item view="sec_ResourceRoleModel.list" title="msg://io.jmix.securityflowui.view.resourcerole/resourceRoleModelListView.menu"/>
+            <item view="sec_RowLevelRoleModel.list" title="msg://io.jmix.securityflowui.view.rowlevelrole/rowLevelRoleModelListView.menu"/>
+        </menu>
+        <menu id="audit">
+            <item view="entityLog.view" title="msg://io.jmix.auditflowui.view.entitylog/entityLogView.menu"/>
+            <item view="userSession.view" title="msg://io.jmix.auditflowui.view.entitylog/UserSessionsView.menu"/>
+        </menu>
+        <menu id="datatools">
+            <item view="datatl_entityInspectorListView" title="msg://io.jmix.datatoolsflowui.view.entityinspector/listTitle"/>
+            <item view="datatl_dataModelListView" title="msg://io.jmix.datatoolsflowui.view.datamodel/entityModelListView.title"/>
+        </menu>
     </menu>
 </menu-config>

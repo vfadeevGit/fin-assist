@@ -1,0 +1,22 @@
+/** Strict, date-only parsing for documents and both kinds of filters. Month is zero-based for Vaadin. */
+export function parseDateInput(input) {
+  const text = input.trim();
+  const match = /^(\d{2})(\d{2})(\d{2}|\d{4})$/.exec(text) || /^(\d{2})\.(\d{2})\.(\d{2}|\d{4})$/.exec(text);
+  if (!match) return undefined;
+  const [, d, m, y] = match;
+  const day = Number(d), month = Number(m), year = y.length === 2 ? 2000 + Number(y) : Number(y);
+  if (year < 1 || month < 1 || month > 12 || day < 1) return undefined;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= days[month - 1] ? {day, month: month - 1, year} : undefined;
+}
+
+export function configureDateInput(picker) {
+  picker.i18n = {...picker.i18n, parseDate: input => {
+    const date = parseDateInput(input);
+    // Vaadin 25.3 interpolates this year into ISO text, whose parser rejects
+    // unsigned single-digit years. Preserve their explicit four-digit spelling.
+    return date && date.year < 10 ? {...date, year: String(date.year).padStart(4, '0')} : date;
+  }};
+}
+if (typeof window !== 'undefined') window.finassistConfigureDateInput = configureDateInput;

@@ -1,5 +1,6 @@
 package ru.stnovator.finassist.security;
 
+import io.jmix.reportsflowui.role.ReportsRunRole;
 import io.jmix.security.model.EntityAttributePolicyAction;
 import io.jmix.security.model.EntityPolicyAction;
 import io.jmix.security.role.annotation.EntityAttributePolicy;
@@ -10,7 +11,7 @@ import io.jmix.securityflowui.role.annotation.ViewPolicy;
 import ru.stnovator.finassist.entity.*;
 
 @ResourceRole(name = "FinanceManagerRole", code = FinanceManagerRole.CODE)
-public interface FinanceManagerRole extends AiScheduleImportRole {
+public interface FinanceManagerRole extends AiScheduleImportRole, ReportsRunRole {
     String CODE = "finance-manager-role";
 
     @MenuPolicy(menuIds = {"Contract.list", "Addendum.list", "Customer.list", "Project.list", "PaymentSchedule.list", "ShipmentSchedule.list", "PaymentScheduleCorrection.list", "ShipmentScheduleCorrection.list", "LineOfBusiness.list", "report_Report.list", "report_ReportRunView", "report_ReportGroup.list", "datatl_entityInspectorListView", "datatl_dataModelListView"})

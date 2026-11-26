@@ -9,7 +9,7 @@ services:
       - "5434:5432"
 
   finassist:
-    image: fin-assist:0.0.3-SNAPSHOT-prod
+    image: fin-assist:0.4.0-prod
     depends_on:
       - postgres
     environment:

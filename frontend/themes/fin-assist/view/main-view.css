@@ -75,27 +75,25 @@ html:not([theme~='dark']) .jmix-main-view-header {
   border-bottom: 1px solid var(--fin-border);
 }
 
-html:not([theme~='dark']) .jmix-main-view-application-title {
-  box-shadow: inset 3px 0 var(--fin-brand);
-}
-
 html:not([theme~='dark']) .jmix-main-view-title {
   font-size: 1.25rem;
 }
 
 html:not([theme~='dark']) .jmix-list-menu a.jmix-menu-item {
   color: var(--fin-text-secondary);
+  background: transparent;
   border-radius: 0.5rem;
+  box-shadow: none;
 }
 
-html:not([theme~='dark']) .jmix-list-menu a.jmix-menu-item:not([highlight]):hover {
-  background: var(--fin-surface-muted);
+html:not([theme~='dark']) .jmix-list-menu a.jmix-menu-item:not(.fin-ai-menu-entry):not([highlight]):hover {
+  background: var(--fin-canvas);
 }
 
-html:not([theme~='dark']) .jmix-list-menu a.jmix-menu-item[highlight] {
-  color: var(--fin-brand);
-  background: var(--fin-brand-soft);
-  box-shadow: inset 3px 0 var(--fin-brand);
+html:not([theme~='dark']) .jmix-list-menu a.jmix-menu-item:not(.fin-ai-menu-entry)[highlight] {
+  --jmix-list-menu-item-font-weight: 600;
+  color: var(--fin-text);
+  background: #f3f4f7;
 }
 
 html:not([theme~='dark']) .jmix-list-menu a.jmix-menu-item:focus-visible {
@@ -229,4 +227,40 @@ html:not([theme~='dark']) .jmix-list-menu a.jmix-menu-item:focus-visible {
     grid-column: 1 / -1;
     width: 100%;
   }
+}
+
+/* Keep the assistant visible without confusing its emphasis with selection. */
+.jmix-list-menu .jmix-menubar-item .menubar-summary {
+  font-size: var(--jmix-list-menu-item-font-size);
+}
+
+.jmix-list-menu .fin-ai-menu-entry {
+  margin-bottom: var(--lumo-space-m);
+  border: 1px solid var(--lumo-primary-color-10pct);
+  border-radius: var(--lumo-border-radius-m);
+  background: var(--lumo-primary-color-10pct);
+  font-weight: 600;
+}
+html:not([theme~='dark']) .jmix-list-menu a.jmix-menu-item.fin-ai-menu-entry {
+  --jmix-list-menu-item-font-weight: 600;
+  color: var(--fin-brand);
+  background: #fbf0f3;
+  border-color: #eed5dc;
+}
+html:not([theme~='dark']) .jmix-list-menu a.jmix-menu-item.fin-ai-menu-entry:is(:hover, [highlight]) {
+  background: #f6e2e8;
+}
+.jmix-list-menu .jmix-menu-item {
+  height: auto;
+  min-height: var(--lumo-size-m);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Jmix applies ellipsis to the inner label independently of its menu link. */
+.jmix-list-menu a.jmix-menu-item .link-text {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
 }

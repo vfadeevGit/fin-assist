@@ -29,6 +29,7 @@
         <dataLoadCoordinator auto="true"/>
         <urlQueryParameters>
             <genericFilter component="genericFilter"/>
+            <dataGridFilter component="addendaDataGrid"/>
             <pagination component="pagination"/>
         </urlQueryParameters>
     </facets>
@@ -42,6 +43,9 @@
             <button id="editBtn" action="addendaDataGrid.edit"/>
             <button id="removeBtn" action="addendaDataGrid.remove"/>
             <button id="aiToolsBtn" action="aiToolsAction"/>
+            <button id="clearColumnFiltersBtn" text="msg://ru.stnovator.finassist/columnFilters.clearAll">
+                <tooltip text="msg://ru.stnovator.finassist/columnFilters.clearAll.description"/>
+            </button>
             <simplePagination id="pagination" dataLoader="addendaDl"/>
         </hbox>
         <dataGrid id="addendaDataGrid"
@@ -55,10 +59,10 @@
                 <action id="remove" type="list_remove"/>
             </actions>
             <columns resizable="true">
-                <column property="number"/>
-                <column property="effectiveDate"/>
-                <column property="contract"/>
-                <column property="contract.customer"/>
+                <column property="number" filterable="true"/>
+                <column property="effectiveDate" filterable="true"/>
+                <column property="contract" filterable="true"/>
+                <column property="contract.customer" filterable="true"/>
             </columns>
         </dataGrid>
         <hbox id="lookupActions" visible="false">
