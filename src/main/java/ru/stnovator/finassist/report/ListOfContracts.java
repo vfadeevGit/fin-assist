@@ -17,6 +17,8 @@ import io.jmix.reports.entity.ParameterType;
 import io.jmix.reports.entity.ReportOutputType;
 import io.jmix.reports.yarg.loaders.ReportDataLoader;
 import io.jmix.reportsflowui.role.ReportsRunRole;
+import ru.stnovator.finassist.security.FinanceManagerRole;
+import ru.stnovator.finassist.security.FullAccessRole;
 import ru.stnovator.finassist.entity.Addendum;
 import ru.stnovator.finassist.service.ContractTerms;
 import ru.stnovator.finassist.service.ContractTermsService;
@@ -50,13 +52,13 @@ import java.util.stream.Collectors;
 
 @ReportDef(
         code = "list-of-contracts",
-        name = "List Of Contracts",
+        name = "msg://ru.stnovator.finassist.report.listOfContracts/title",
         description = "The list of contracts, groupped by customers, projects and full details about planned shipment and payment",
         uuid = "0ce06fdf-ee93-4bce-9b25-03cae4ae2ab2",
         beanName = "ListOfContractsService",
         restAccessible = true
 )
-@AvailableForRoles(roleClasses = ReportsRunRole.class)
+@AvailableForRoles(roleClasses = {ReportsRunRole.class, FullAccessRole.class, FinanceManagerRole.class})
 @AvailableInViews(viewClasses = ContractListView.class)
 @TemplateDef(
         isDefault = true,

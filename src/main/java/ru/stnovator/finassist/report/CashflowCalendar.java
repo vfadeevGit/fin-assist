@@ -17,6 +17,8 @@ import io.jmix.reports.entity.ParameterType;
 import io.jmix.reports.entity.ReportOutputType;
 import io.jmix.reports.yarg.loaders.ReportDataLoader;
 import io.jmix.reportsflowui.role.ReportsRunRole;
+import ru.stnovator.finassist.security.FinanceManagerRole;
+import ru.stnovator.finassist.security.FullAccessRole;
 import ru.stnovator.finassist.entity.Addendum;
 import ru.stnovator.finassist.entity.Contract;
 import ru.stnovator.finassist.entity.Customer;
@@ -48,13 +50,13 @@ import java.util.stream.Collectors;
 
 @ReportDef(
         code = "cashflow-calendar",
-        name = "Cashflow Calendar",
+        name = "msg://ru.stnovator.finassist.report.cashflowCalendar/title",
         description = "Cross-tab calendar of planned shipment and planned payment values by project and month",
         uuid = "0f4c2f6a-2b67-4a90-99ca-0569a0f5d6bd",
         beanName = "CashflowCalendarService",
         restAccessible = true
 )
-@AvailableForRoles(roleClasses = ReportsRunRole.class)
+@AvailableForRoles(roleClasses = {ReportsRunRole.class, FullAccessRole.class, FinanceManagerRole.class})
 @AvailableInViews(viewClasses = ContractListView.class)
 @TemplateDef(
         isDefault = true,
